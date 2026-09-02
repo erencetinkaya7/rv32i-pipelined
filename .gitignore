@@ -1,0 +1,25 @@
+# FPGA build outputs
+fpga/**/*.elf
+fpga/**/*.bin
+fpga/**/*.hex
+fpga/**/*.json
+fpga/**/*.fs
+
+
+# Simulation outputs
+*_sim
+*.vcd
+compile.log
+
+# RISC-V build outputs
+sw/*.elf
+sw/*.bin
+sw/*.hex
+sw/*.o
+
+# Build directories
+build/
+
+# Editor / OS junk
+.DS_Store
+*~
