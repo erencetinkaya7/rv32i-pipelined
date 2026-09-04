@@ -158,6 +158,10 @@ module rv32i_pipelined_core (
     logic       ex_branch_enable;
     logic       ex_jump;
     logic       ex_jalr;
+    logic [3:0] ex_alu_control;
+    logic [31:0] ex_alu_a;
+    logic [31:0] ex_alu_b;
+    logic [31:0] ex_alu_result;
 
 
 // ID/EX pipeline register
@@ -210,6 +214,30 @@ module rv32i_pipelined_core (
         .jump_out(ex_jump),
         .jalr_out(ex_jalr)
 );
+
+// EX Stage - ALU Decode
+
+    alu_decoder alu_decoder_inst (
+        .opcode(ex_opcode),
+        .funct3(ex_funct3),
+        .funct7(ex_funct7),
+
+        .alu_control(ex_alu_control)
+    );
+
+
+// EX - Stage - ALU Operand Selection
+
+    always_comb begin
+        case (ex_alu_a_sel)
+            2'b00: ex_alu_a = ex_rs1_data;
+            2'b01: ex_alu_a = ex_pc;
+            2'b10: ex_alu_a = 32'b0;
+            default: ex_alu_a = 32'b0;
+        endcase
+
+    ex_alu_b = ex_alu_src ? ex_immediate : ex_rs2_data;
+    end
 
 
 endmodule
