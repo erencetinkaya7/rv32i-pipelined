@@ -66,6 +66,12 @@ test-branches: $(BUILD)
 	-o $(BUILD)/branch_regression_tb_sim $(RTL) tb/branch_regression_tb.sv
 	vvp $(BUILD)/branch_regression_tb_sim
 
+test-flow: $(BUILD)
+	iverilog -g2012 -s pipeline_flow_tb \
+	-o $(BUILD)/pipeline_flow_tb_sim $(RTL) tb/pipeline_flow_tb.sv
+	vvp $(BUILD)/pipeline_flow_tb_sim
+
+	
 test: test-if test-id test-ex-wb test-memory test-subword \
       test-branch test-jump test-jalr \
       test-arithmetic test-utype test-branches
