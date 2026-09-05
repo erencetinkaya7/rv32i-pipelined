@@ -145,7 +145,7 @@ module rv32i_pipelined_core (
         .rs2_data(id_rs2_data),
 
         .debug_a0(debug_a0)
-);        
+    );        
 
 
 // ID/EX pipeline signals
@@ -180,7 +180,56 @@ module rv32i_pipelined_core (
     logic [31:0] ex_jalr_target;
     logic        ex_pc_redirect;
     
+    logic [31:0] ex_forwarded_rs1;
+    logic [31:0] ex_forwarded_rs2;
+    logic [1:0]  forward_a;
+    logic [1:0]  forward_b;
+    logic [31:0] mem_forward_data;
 
+// EX/MEM pipeline signals
+    logic [31:0] mem_alu_result;
+    logic [31:0] mem_rs2_data;
+    logic [2:0]  mem_funct3;
+    logic        mem_mem_write;
+    logic [1:0]  mem_result_src;
+    logic [4:0]  mem_rd;
+    logic        mem_reg_write;
+    logic [31:0] mem_pc_plus4;
+
+    assign mem_forward_data =
+    (mem_result_src == 2'b10) ? mem_pc_plus4 :
+                                mem_alu_result;
+
+// Forwarding Unit
+
+    forwarding_unit forwarding (
+    .ex_rs1(ex_rs1),
+    .ex_rs2(ex_rs2),
+
+    .mem_rd(mem_rd),
+    .mem_reg_write(mem_reg_write),
+    .mem_result_src(mem_result_src),
+
+    .wb_rd(wb_rd),
+    .wb_reg_write(wb_reg_write),
+
+    .forward_a(forward_a),
+    .forward_b(forward_b)
+    );
+
+    always_comb begin
+        case (forward_a)
+            2'b10: ex_forwarded_rs1 = mem_forward_data;
+            2'b01: ex_forwarded_rs1 = wb_result;
+            default: ex_forwarded_rs1 = ex_rs1_data;
+        endcase
+
+        case (forward_b)
+            2'b10: ex_forwarded_rs2 = mem_forward_data;
+            2'b01: ex_forwarded_rs2 = wb_result;
+            default: ex_forwarded_rs2 = ex_rs2_data;
+        endcase
+    end
 
 // ID/EX pipeline register
 
@@ -249,14 +298,18 @@ module rv32i_pipelined_core (
 
     always_comb begin
         case (ex_alu_a_sel)
-            2'b00: ex_alu_a = ex_rs1_data;
-            2'b01: ex_alu_a = ex_pc;
-            2'b10: ex_alu_a = 32'b0;
+            2'b00:   ex_alu_a = ex_forwarded_rs1;
+            2'b01:   ex_alu_a = ex_pc;
+            2'b10:   ex_alu_a = 32'b0;
             default: ex_alu_a = 32'b0;
         endcase
 
-    ex_alu_b = ex_alu_src ? ex_immediate : ex_rs2_data;
+        if (ex_alu_src)
+            ex_alu_b = ex_immediate;
+        else
+            ex_alu_b = ex_forwarded_rs2;
     end
+
 
 
 // ALU
@@ -276,7 +329,7 @@ module rv32i_pipelined_core (
         .rs2_data      (ex_rs2_data),
         .funct3        (ex_funct3),
         .branch_enable (ex_branch_enable),
-        
+
         .branch_taken  (ex_branch_taken)
     );
 
@@ -292,17 +345,7 @@ module rv32i_pipelined_core (
                 ? ex_branch_target
                 : pc_plus4;
 
-
-// EX/MEM pipeline signals
-    logic [31:0] mem_alu_result;
-    logic [31:0] mem_rs2_data;
-    logic [31:0] mem_pc_plus4;
-    logic [4:0]  mem_rd;
-    logic [2:0]  mem_funct3;
-    logic        mem_reg_write;
-    logic        mem_mem_write;
-    logic [1:0]  mem_result_src;
-
+    
 
 // EX/MEM pipeline register
     ex_mem_reg ex_mem (
@@ -359,6 +402,7 @@ module rv32i_pipelined_core (
 
 
 // Writeback result selection
+
     always_comb begin
         case (wb_result_src)
             2'b00: wb_result = wb_alu_result;
