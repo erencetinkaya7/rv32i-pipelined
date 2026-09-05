@@ -24,9 +24,11 @@ module rv32i_pipelined_core (
 
 
 // Instruction Fetch
+
     logic [31:0] pc_next;
     logic [31:0] pc;
     logic [31:0] pc_plus4;
+
     assign instruction_address = pc;
     assign pc_plus4 = pc + 32'd4;
     
@@ -47,11 +49,11 @@ module rv32i_pipelined_core (
     if_id_reg if_id (
         .clk(clk),
         .reset(reset),
-        
+        // Inputs
         .pc_in(pc),
         .pc_plus4_in(pc_plus4),
         .instruction_in(instruction_data),
-        
+        // Outputs
         .pc_out(if_id_pc),
         .pc_plus4_out(if_id_pc_plus4),
         .instruction_out(if_id_instruction)
@@ -97,6 +99,7 @@ module rv32i_pipelined_core (
 // Main instruction control
     control_unit control (
         .opcode(id_opcode),
+
         .reg_write(id_reg_write),
         .alu_src(id_alu_src),
         .imm_sel(id_imm_sel),
@@ -111,8 +114,9 @@ module rv32i_pipelined_core (
 // Immediate generation
     immediate_generator imm_gen (
         .instruction(if_id_instruction),
-        .immediate(id_immediate),
-        .imm_sel(id_imm_sel)
+        .imm_sel(id_imm_sel),
+
+        .immediate(id_immediate)
     );
 
 
@@ -131,8 +135,7 @@ module rv32i_pipelined_core (
     register_file rf (
         .clk(clk),
 
-        .write_enable(wb_reg_write),   // WB stage not connected yet
-
+        .write_enable(wb_reg_write),
         .rs1_addr(id_rs1),
         .rs2_addr(id_rs2),
         .rd_addr(wb_rd),
@@ -182,6 +185,7 @@ module rv32i_pipelined_core (
 // ID/EX pipeline register
 
     id_ex_reg id_ex (
+        // Inputs
         .clk(clk),
         .reset(reset),
 
@@ -206,7 +210,7 @@ module rv32i_pipelined_core (
         .branch_enable_in(id_branch_enable),
         .jump_in(id_jump),
         .jalr_in(id_jalr),
-
+        // Outputs
         .pc_out(ex_pc),
         .pc_plus4_out(ex_pc_plus4),
         .rs1_data_out(ex_rs1_data),
@@ -261,6 +265,7 @@ module rv32i_pipelined_core (
         .a           (ex_alu_a),
         .b           (ex_alu_b),
         .alu_control (ex_alu_control),
+
         .result      (ex_alu_result)
     );
 
@@ -271,6 +276,7 @@ module rv32i_pipelined_core (
         .rs2_data      (ex_rs2_data),
         .funct3        (ex_funct3),
         .branch_enable (ex_branch_enable),
+        
         .branch_taken  (ex_branch_taken)
     );
 

@@ -1,5 +1,6 @@
 module control_unit (
 	input logic [6:0] opcode,
+	
 	output logic reg_write,
 	output logic alu_src,
 	output logic [2:0] imm_sel,
