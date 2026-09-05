@@ -24,7 +24,7 @@ module rv32i_pipelined_core (
 
 
 // Instruction Fetch
-
+    logic [31:0] pc_next;
     logic [31:0] pc;
     logic [31:0] pc_plus4;
     assign instruction_address = pc;
@@ -34,7 +34,7 @@ module rv32i_pipelined_core (
         if (reset)
             pc <= 32'b0;
         else
-            pc <= pc_plus4;
+            pc <= pc_next;
     end
 
 
@@ -114,19 +114,29 @@ module rv32i_pipelined_core (
         .immediate(id_immediate),
         .imm_sel(id_imm_sel)
     );
-    
+
+
+ // MEM/WB pipeline signals
+    logic [31:0] wb_alu_result;
+    logic [31:0] wb_mem_data;
+    logic [31:0] wb_pc_plus4;
+    logic [4:0]  wb_rd;
+    logic        wb_reg_write;
+    logic [1:0]  wb_result_src;
+    logic [31:0] wb_result;
+
+
     
 // Register file
     register_file rf (
         .clk(clk),
 
-        .write_enable(1'b0),   // WB stage not connected yet
+        .write_enable(wb_reg_write),   // WB stage not connected yet
 
         .rs1_addr(id_rs1),
         .rs2_addr(id_rs2),
-
-        .rd_addr(5'b0),
-        .rd_data(32'b0),
+        .rd_addr(wb_rd),
+        .rd_data(wb_result),
 
         .rs1_data(id_rs1_data),
         .rs2_data(id_rs2_data),
@@ -162,6 +172,11 @@ module rv32i_pipelined_core (
     logic [31:0] ex_alu_a;
     logic [31:0] ex_alu_b;
     logic [31:0] ex_alu_result;
+    logic        ex_branch_taken;
+    logic [31:0] ex_branch_target;
+    logic [31:0] ex_jalr_target;
+    logic        ex_pc_redirect;
+    
 
 
 // ID/EX pipeline register
@@ -240,5 +255,111 @@ module rv32i_pipelined_core (
     end
 
 
+// ALU
+
+    alu alu_inst (
+        .a           (ex_alu_a),
+        .b           (ex_alu_b),
+        .alu_control (ex_alu_control),
+        .result      (ex_alu_result)
+    );
+
+
+// Branch decision
+    branch_unit branch_unit_inst (
+        .rs1_data      (ex_rs1_data),
+        .rs2_data      (ex_rs2_data),
+        .funct3        (ex_funct3),
+        .branch_enable (ex_branch_enable),
+        .branch_taken  (ex_branch_taken)
+    );
+
+    // Control flow targets
+    assign ex_branch_target = ex_pc + ex_immediate;
+    assign ex_jalr_target   = (ex_rs1_data + ex_immediate) & 32'hFFFF_FFFE;
+
+    assign ex_pc_redirect = ex_branch_taken | ex_jump | ex_jalr;
+
+    assign pc_next = ex_jalr
+                ? ex_jalr_target
+                : ex_pc_redirect
+                ? ex_branch_target
+                : pc_plus4;
+
+
+// EX/MEM pipeline signals
+    logic [31:0] mem_alu_result;
+    logic [31:0] mem_rs2_data;
+    logic [31:0] mem_pc_plus4;
+    logic [4:0]  mem_rd;
+    logic [2:0]  mem_funct3;
+    logic        mem_reg_write;
+    logic        mem_mem_write;
+    logic [1:0]  mem_result_src;
+
+
+// EX/MEM pipeline register
+    ex_mem_reg ex_mem (
+        .clk            (clk),
+        .reset          (reset),
+
+        .alu_result_in  (ex_alu_result),
+        .rs2_data_in    (ex_rs2_data),
+        .pc_plus4_in    (ex_pc_plus4),
+        .rd_in          (ex_rd),
+        .funct3_in      (ex_funct3),
+        .reg_write_in   (ex_reg_write),
+        .mem_write_in   (ex_mem_write),
+        .result_src_in  (ex_result_src),
+
+        .alu_result_out (mem_alu_result),
+        .rs2_data_out   (mem_rs2_data),
+        .pc_plus4_out   (mem_pc_plus4),
+        .rd_out         (mem_rd),
+        .funct3_out     (mem_funct3),
+        .reg_write_out  (mem_reg_write),
+        .mem_write_out  (mem_mem_write),
+        .result_src_out (mem_result_src)
+    );
+
+
+
+// Data memory interface
+    assign data_address    = mem_alu_result;
+    assign data_write_data = mem_rs2_data;
+    assign data_mem_write  = mem_mem_write;
+    assign data_funct3     = mem_funct3;
+
+
+// MEM/WB pipeline register
+    mem_wb_reg mem_wb (
+        .clk            (clk),
+        .reset          (reset),
+
+        .alu_result_in  (mem_alu_result),
+        .mem_data_in    (data_read_data),
+        .pc_plus4_in    (mem_pc_plus4),
+        .rd_in          (mem_rd),
+        .reg_write_in   (mem_reg_write),
+        .result_src_in  (mem_result_src),
+
+        .alu_result_out (wb_alu_result),
+        .mem_data_out   (wb_mem_data),
+        .pc_plus4_out   (wb_pc_plus4),
+        .rd_out         (wb_rd),
+        .reg_write_out  (wb_reg_write),
+        .result_src_out (wb_result_src)
+    );
+
+
+// Writeback result selection
+    always_comb begin
+        case (wb_result_src)
+            2'b00: wb_result = wb_alu_result;
+            2'b01: wb_result = wb_mem_data;
+            2'b10: wb_result = wb_pc_plus4;
+            default: wb_result = 32'b0;
+        endcase
+    end
 endmodule
    
