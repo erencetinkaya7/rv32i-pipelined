@@ -5,6 +5,7 @@ module id_ex_reg (
 
     input logic clk,
     input logic reset,
+    input logic bubble,
 
     // Decode data
     input logic [31:0] pc_in,
@@ -73,6 +74,18 @@ module id_ex_reg (
             funct7_out        <= 7'b0;
             opcode_out        <= 7'b0;
 
+            reg_write_out     <= 1'b0;
+            alu_src_out       <= 1'b0;
+            alu_a_sel_out     <= 2'b0;
+            mem_write_out     <= 1'b0;
+            result_src_out    <= 2'b0;
+            branch_enable_out <= 1'b0;
+            jump_out          <= 1'b0;
+            jalr_out          <= 1'b0;
+        end
+
+        // Insert a NOP into EX while the dependent instruction remains in ID.
+        else if (bubble) begin
             reg_write_out     <= 1'b0;
             alu_src_out       <= 1'b0;
             alu_a_sel_out     <= 2'b0;

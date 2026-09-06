@@ -21,20 +21,17 @@ A synthesizable 32-bit RISC-V processor implementing a classic
 
 ## Overview
 
-This project implements a 5-stage pipelined **RV32I processor core** from scratch in SystemVerilog.
+An educational 5-stage **RV32I processor core**, written from scratch in
+SystemVerilog. It is the third project in a processor-design learning path,
+after a 16-bit multicycle CPU and a single-cycle RV32I core.
 
-It is the third processor project in my computer architecture learning path:
-
-1. Custom 16-bit multicycle CPU
-2. Single-cycle RV32I processor + minimal SoC
-3. **5-stage pipelined RV32I processor — current project**
-
-The current `v0.1` baseline implements the complete datapath and supports
-37 RV32I instructions.
-
-EX-stage forwarding handles RAW dependencies for ALU operands, store data,
-branch comparisons, and JALR targets. Load-use stalls and control-flow flushes
-are not implemented yet; programs using those cases still require NOP padding.
+| Area | Current state |
+| --- | --- |
+| ISA | 37 supported RV32I instructions |
+| Datapath | IF → ID → EX → MEM → WB |
+| Data hazards | EX-stage forwarding and one-cycle load-use stall |
+| Control hazards | Branch / JAL / JALR flush pending |
+| FPGA baseline | Tang Nano 9K, 65.71 MHz |
 
 ---
 
@@ -51,7 +48,7 @@ are not implemented yet; programs using those cases still require NOP padding.
         IF/ID        ID/EX        EX/MEM         MEM/WB        │
           │            │            │             │            │
           └────────────┴────────────┴─────────────┴────────────┘
-````
+```
 
 Pipeline registers carry both datapath values and the control signals
 belonging to each instruction.
@@ -82,29 +79,14 @@ Pipeline registers:
 
 ## Supported RV32I Instructions
 
-### Arithmetic / Logic
-
-`ADD` `SUB` `AND` `OR` `XOR`
-`SLL` `SRL` `SRA` `SLT` `SLTU`
-
-`ADDI` `ANDI` `ORI` `XORI`
-`SLLI` `SRLI` `SRAI` `SLTI` `SLTIU`
-
-### Loads
-
-`LB` `LBU` `LH` `LHU` `LW`
-
-### Stores
-
-`SB` `SH` `SW`
-
-### Branches
-
-`BEQ` `BNE` `BLT` `BGE` `BLTU` `BGEU`
-
-### Control / Upper Immediate
-
-`LUI` `AUIPC` `JAL` `JALR`
+| Group | Instructions |
+| --- | --- |
+| Register arithmetic | `ADD SUB AND OR XOR SLL SRL SRA SLT SLTU` |
+| Immediate arithmetic | `ADDI ANDI ORI XORI SLLI SRLI SRAI SLTI SLTIU` |
+| Loads | `LB LBU LH LHU LW` |
+| Stores | `SB SH SW` |
+| Branches | `BEQ BNE BLT BGE BLTU BGEU` |
+| Control / upper immediate | `LUI AUIPC JAL JALR` |
 
 ---
 
@@ -118,6 +100,7 @@ rtl/
 │   ├── branch_unit.sv
 │   ├── control_unit.sv
 │   ├── forwarding_unit.sv
+│   ├── hazard_unit.sv
 │   ├── immediate_generator.sv
 │   ├── instruction_fields.sv
 │   ├── register_file.sv
@@ -140,31 +123,28 @@ rtl/
 
 The processor is verified using self-checking SystemVerilog testbenches.
 
-Current tests cover:
-
-* IF and ID stage behavior
-* EX → WB end-to-end execution
-* Arithmetic and logical instructions
-* Load/store operations
-* Byte and halfword memory accesses
-* Branches
-* JAL / JALR
-* LUI / AUIPC
-* Pipeline stage flow
-* EX-stage RAW forwarding, including store data, branch operands, JALR targets,
-  JAL link values, and x0 protection
-* Full supported-instruction regression
+| Scope | Coverage |
+| --- | --- |
+| ISA behavior | Arithmetic, logic, loads/stores, branches, JAL/JALR, LUI/AUIPC |
+| Memory | Byte, halfword, and word accesses |
+| Pipeline | Stage flow and EX→WB execution |
+| Hazards | EX-stage RAW forwarding; load-use detection, stall, and bubble |
+| Regression | Full supported-instruction suite |
 
 Pipeline timing and stage alignment were also inspected using GTKWave.
 
-Run:
+On Linux:
 
 ```bash
 make lint
 make test
 ```
 
-Linting is performed with **Verilator** and simulation with **Icarus Verilog**.
+On Windows, first load the locally installed OSS CAD Suite environment, then
+compile and run the desired testbench with Icarus Verilog. The project keeps
+the generated simulator files under `build/`.
+
+Linting uses **Verilator**; simulation uses **Icarus Verilog**.
 
 ---
 
@@ -216,19 +196,16 @@ make flash
 
 ## Current Limitations
 
-The `v0.1` processor is a functional **hazard-free baseline**.
-
 Not yet implemented:
 
-* Load-use stall
-* Pipeline bubbles
 * Branch / jump flush
 * CSR instructions
 * Exceptions and traps
 * Interrupts
 * Cache hierarchy
 
-Dependent instructions currently require NOP spacing.
+Control-flow instructions currently need NOP padding until the flush checkpoint
+is complete.
 
 ---
 
@@ -242,10 +219,8 @@ Dependent instructions currently require NOP spacing.
 * [x] 37-instruction RV32I baseline
 * [x] FPGA synthesis and timing
 * [x] Pipeline flow verification
-* [x] EX-stage RAW forwarding
-* [x] EX/MEM forwarding
-* [x] MEM/WB forwarding
-* [ ] Load-use stall and bubble insertion
+* [x] EX-stage RAW forwarding, including EX/MEM and MEM/WB priority
+* [x] Load-use stall and bubble insertion
 * [ ] Branch / jump pipeline flush
 * [ ] NOP-free program execution
 * [ ] Final FPGA timing comparison

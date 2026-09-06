@@ -6,6 +6,8 @@ module if_id_reg (
     input  logic        clk,
     input  logic        reset,
 
+    input logic enable,
+
     input  logic [31:0] pc_in,
     input  logic [31:0] pc_plus4_in,
     input  logic [31:0] instruction_in,
@@ -26,11 +28,14 @@ module if_id_reg (
             pc_plus4_out    <= 32'b0;
             instruction_out <= 32'h0000_0013;
         end
-        else begin
+
+        // Hold the dependent instruction in ID during a load-use stall.
+        else if (enable) begin
             pc_out           <= pc_in;
             pc_plus4_out     <= pc_plus4_in;
             instruction_out  <= instruction_in;
         end
+
     end
 
 endmodule

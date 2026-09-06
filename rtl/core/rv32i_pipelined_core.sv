@@ -28,6 +28,7 @@ module rv32i_pipelined_core (
     logic [31:0] pc_next;
     logic [31:0] pc;
     logic [31:0] pc_plus4;
+    logic load_use_hazard;
 
     assign instruction_address = pc;
     assign pc_plus4 = pc + 32'd4;
@@ -35,7 +36,8 @@ module rv32i_pipelined_core (
     always_ff @(posedge clk) begin
         if (reset)
             pc <= 32'b0;
-        else
+        // Freeze fetch while the dependent instruction waits in ID.
+        else if (!load_use_hazard)
             pc <= pc_next;
     end
 
@@ -50,6 +52,7 @@ module rv32i_pipelined_core (
         .clk(clk),
         .reset(reset),
         // Inputs
+        .enable(!load_use_hazard),
         .pc_in(pc),
         .pc_plus4_in(pc_plus4),
         .instruction_in(instruction_data),
@@ -83,6 +86,9 @@ module rv32i_pipelined_core (
     logic [31:0] id_rs1_data;
     logic [31:0] id_rs2_data;
 
+    logic id_uses_rs1;
+    logic id_uses_rs2;
+
 
     instruction_fields fields (
         .instruction(if_id_instruction),
@@ -108,7 +114,9 @@ module rv32i_pipelined_core (
         .branch_enable(id_branch_enable),
         .jump(id_jump),
         .jalr(id_jalr),
-        .alu_a_sel(id_alu_a_sel)
+        .alu_a_sel(id_alu_a_sel),
+        .uses_rs1(id_uses_rs1),
+        .uses_rs2(id_uses_rs2)
     );
 
 // Immediate generation
@@ -186,6 +194,7 @@ module rv32i_pipelined_core (
     logic [1:0]  forward_b;
     logic [31:0] mem_forward_data;
 
+
 // EX/MEM pipeline signals
     logic [31:0] mem_alu_result;
     logic [31:0] mem_rs2_data;
@@ -237,6 +246,7 @@ module rv32i_pipelined_core (
         // Inputs
         .clk(clk),
         .reset(reset),
+        .bubble(load_use_hazard),
 
         .pc_in(if_id_pc),
         .pc_plus4_in(if_id_pc_plus4),
@@ -282,6 +292,22 @@ module rv32i_pipelined_core (
         .jump_out(ex_jump),
         .jalr_out(ex_jalr)
 );
+
+// Hazard Unit
+
+    hazard_unit hazard (
+
+        .ex_rd          (ex_rd),
+        .ex_reg_write   (ex_reg_write),
+        .ex_result_src  (ex_result_src),
+
+        .id_rs1         (id_rs1),
+        .id_rs2         (id_rs2),
+        .id_uses_rs1    (id_uses_rs1),
+        .id_uses_rs2    (id_uses_rs2),
+
+        .load_use_hazard(load_use_hazard)
+    );
 
 // EX Stage - ALU Decode
 

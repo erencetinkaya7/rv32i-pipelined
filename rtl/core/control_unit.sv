@@ -10,7 +10,10 @@ module control_unit (
 	output logic branch_enable,
 	output logic jump,
 	output logic jalr,
-	output logic [1:0] alu_a_sel
+	output logic [1:0] alu_a_sel,
+
+	output logic uses_rs1,
+	output logic uses_rs2
 );
 
 localparam logic [2:0] IMM_I = 3'b000;
@@ -33,6 +36,8 @@ always_comb begin
 	alu_src = 1'b0;
 	mem_write = 1'b0;
 	result_src = 2'b0;
+	uses_rs1 = 1'b0;
+	uses_rs2 = 1'b0;
 
 	case (opcode) // R-type
 		7'b0110011: begin
@@ -40,6 +45,8 @@ always_comb begin
 			alu_src = 1'b0;
 			mem_write = 1'b0;
 			result_src = 2'b0;
+			uses_rs1 = 1'b1;
+			uses_rs2 = 1'b1;
 		end
 		
 		7'b0010011: begin // I-type
@@ -48,6 +55,7 @@ always_comb begin
 			imm_sel = IMM_I;
 			mem_write = 1'b0;
 			result_src = 2'b0;
+			uses_rs1 = 1'b1;
 		end
 		
 		7'b0000011: begin //lw
@@ -56,6 +64,7 @@ always_comb begin
 			imm_sel = IMM_I;
 			mem_write = 1'b0;
 			result_src = 2'b01;
+			uses_rs1 = 1'b1;
 		end
 
 		7'b0100011: begin //sw
@@ -63,12 +72,16 @@ always_comb begin
 			alu_src = 1'b1;
 			imm_sel = IMM_S;
 			mem_write = 1'b1;
+			uses_rs1 = 1'b1;
+			uses_rs2 = 1'b1;
 		end
 
 		7'b1100011: begin // B-type
 			reg_write = 1'b0;
 			imm_sel = IMM_B;
 			branch_enable = 1'b1;
+			uses_rs1 = 1'b1;
+			uses_rs2 = 1'b1;
 		end
 
 		7'b0110111: begin // LUI
@@ -101,6 +114,7 @@ always_comb begin
 			imm_sel = IMM_I;
 			jalr = 1'b1;
 			result_src = 2'b10;
+			uses_rs1 = 1'b1;
 		end
 		default: ;
 	endcase
