@@ -32,8 +32,9 @@ It is the third processor project in my computer architecture learning path:
 The current `v0.1` baseline implements the complete datapath and supports
 37 RV32I instructions.
 
-Hazard handling is intentionally not implemented yet; programs requiring
-data dependencies currently use NOP padding.
+EX-stage forwarding handles RAW dependencies for ALU operands, store data,
+branch comparisons, and JALR targets. Load-use stalls and control-flow flushes
+are not implemented yet; programs using those cases still require NOP padding.
 
 ---
 
@@ -116,6 +117,7 @@ rtl/
 │   ├── alu_decoder.sv
 │   ├── branch_unit.sv
 │   ├── control_unit.sv
+│   ├── forwarding_unit.sv
 │   ├── immediate_generator.sv
 │   ├── instruction_fields.sv
 │   ├── register_file.sv
@@ -149,6 +151,8 @@ Current tests cover:
 * JAL / JALR
 * LUI / AUIPC
 * Pipeline stage flow
+* EX-stage RAW forwarding, including store data, branch operands, JALR targets,
+  JAL link values, and x0 protection
 * Full supported-instruction regression
 
 Pipeline timing and stage alignment were also inspected using GTKWave.
@@ -216,7 +220,6 @@ The `v0.1` processor is a functional **hazard-free baseline**.
 
 Not yet implemented:
 
-* Data forwarding
 * Load-use stall
 * Pipeline bubbles
 * Branch / jump flush
@@ -239,9 +242,9 @@ Dependent instructions currently require NOP spacing.
 * [x] 37-instruction RV32I baseline
 * [x] FPGA synthesis and timing
 * [x] Pipeline flow verification
-* [ ] RAW hazard detection
-* [ ] EX/MEM forwarding
-* [ ] MEM/WB forwarding
+* [x] EX-stage RAW forwarding
+* [x] EX/MEM forwarding
+* [x] MEM/WB forwarding
 * [ ] Load-use stall and bubble insertion
 * [ ] Branch / jump pipeline flush
 * [ ] NOP-free program execution

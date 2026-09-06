@@ -119,6 +119,46 @@ module raw_hazard_tb;
                 endcase
             end
 
+
+            // Test 4: store-data forwarding
+            //
+            // addi x5, x0, 7
+            // sw   x5, 0(x0)
+            //
+            // Expected: memory write data = 7
+            4: begin
+                case (instruction_address)
+                    32'h0000_0000:
+                        instruction_data = 32'h00700293; // addi x5, x0, 7
+
+                    32'h0000_0004:
+                        instruction_data = 32'h00502023; // sw x5, 0(x0)
+
+                    default:
+                        instruction_data = 32'h00000013;
+                endcase
+            end
+
+
+            // Test 5: x0 must never be forwarded
+            //
+            // addi x0, x0, 7
+            // addi x10, x0, 1
+            //
+            // Expected x10 = 1, not 8
+            5: begin
+                case (instruction_address)
+                    32'h0000_0000:
+                        instruction_data = 32'h00700013;
+
+                    32'h0000_0004:
+                        instruction_data = 32'h00100513;
+
+                    default:
+                        instruction_data = 32'h00000013;
+                endcase
+            end
+
             default:
                 instruction_data = 32'h00000013;
 
@@ -173,6 +213,23 @@ module raw_hazard_tb;
         end
     endtask
 
+    task automatic run_store_data_test;
+        begin
+            test_case = 4;
+            reset_cpu();
+
+            wait (data_mem_write === 1'b1);
+            #1;
+
+            if (data_address !== 32'd0 ||
+                data_write_data !== 32'd7 ||
+                data_funct3 !== 3'b010) begin
+                $fatal(1, "Store-data forwarding failed");
+            end
+
+            $display("PASS: store-data forwarding");
+        end
+    endtask
 
     initial begin
         $dumpfile("raw_hazard.vcd");
@@ -197,6 +254,14 @@ module raw_hazard_tb;
             3,
             32'd2,
             "MEM priority over WB"
+        );
+
+        run_store_data_test();
+
+        run_test(
+            5,
+            32'd1,
+            "x0 forwarding protection"
         );
 
         $display("PASS: all RAW forwarding tests passed");

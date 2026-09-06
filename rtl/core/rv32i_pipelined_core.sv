@@ -325,8 +325,8 @@ module rv32i_pipelined_core (
 
 // Branch decision
     branch_unit branch_unit_inst (
-        .rs1_data      (ex_rs1_data),
-        .rs2_data      (ex_rs2_data),
+        .rs1_data      (ex_forwarded_rs1),
+        .rs2_data      (ex_forwarded_rs2),
         .funct3        (ex_funct3),
         .branch_enable (ex_branch_enable),
 
@@ -335,7 +335,7 @@ module rv32i_pipelined_core (
 
     // Control flow targets
     assign ex_branch_target = ex_pc + ex_immediate;
-    assign ex_jalr_target   = (ex_rs1_data + ex_immediate) & 32'hFFFF_FFFE;
+    assign ex_jalr_target   = (ex_forwarded_rs1 + ex_immediate) & 32'hFFFF_FFFE;
 
     assign ex_pc_redirect = ex_branch_taken | ex_jump | ex_jalr;
 
@@ -353,7 +353,7 @@ module rv32i_pipelined_core (
         .reset          (reset),
 
         .alu_result_in  (ex_alu_result),
-        .rs2_data_in    (ex_rs2_data),
+        .rs2_data_in    (ex_forwarded_rs2),
         .pc_plus4_in    (ex_pc_plus4),
         .rd_in          (ex_rd),
         .funct3_in      (ex_funct3),
