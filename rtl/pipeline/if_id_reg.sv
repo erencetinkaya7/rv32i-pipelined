@@ -7,6 +7,7 @@ module if_id_reg (
     input  logic        reset,
 
     input logic enable,
+    input logic flush,
 
     input  logic [31:0] pc_in,
     input  logic [31:0] pc_plus4_in,
@@ -24,6 +25,12 @@ module if_id_reg (
     always_ff @(posedge clk) begin
     
         if (reset) begin
+            pc_out          <= 32'b0;
+            pc_plus4_out    <= 32'b0;
+            instruction_out <= 32'h0000_0013;
+        end
+
+        else if (flush) begin
             pc_out          <= 32'b0;
             pc_plus4_out    <= 32'b0;
             instruction_out <= 32'h0000_0013;

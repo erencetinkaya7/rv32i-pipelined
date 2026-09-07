@@ -29,6 +29,7 @@ module rv32i_pipelined_core (
     logic [31:0] pc;
     logic [31:0] pc_plus4;
     logic load_use_hazard;
+    logic ex_pc_redirect;
 
     assign instruction_address = pc;
     assign pc_plus4 = pc + 32'd4;
@@ -51,6 +52,7 @@ module rv32i_pipelined_core (
     if_id_reg if_id (
         .clk(clk),
         .reset(reset),
+        .flush(ex_pc_redirect),
         // Inputs
         .enable(!load_use_hazard),
         .pc_in(pc),
@@ -186,7 +188,6 @@ module rv32i_pipelined_core (
     logic        ex_branch_taken;
     logic [31:0] ex_branch_target;
     logic [31:0] ex_jalr_target;
-    logic        ex_pc_redirect;
     
     logic [31:0] ex_forwarded_rs1;
     logic [31:0] ex_forwarded_rs2;
@@ -246,7 +247,7 @@ module rv32i_pipelined_core (
         // Inputs
         .clk(clk),
         .reset(reset),
-        .bubble(load_use_hazard),
+        .bubble(load_use_hazard | ex_pc_redirect),
 
         .pc_in(if_id_pc),
         .pc_plus4_in(if_id_pc_plus4),

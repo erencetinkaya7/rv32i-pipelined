@@ -29,8 +29,8 @@ after a 16-bit multicycle CPU and a single-cycle RV32I core.
 | --- | --- |
 | ISA | 37 supported RV32I instructions |
 | Datapath | IF → ID → EX → MEM → WB |
-| Data hazards | EX-stage forwarding and one-cycle load-use stall |
-| Control hazards | Branch / JAL / JALR flush pending |
+| Data hazards | EX-stage forwarding, WB-to-ID bypass, one-cycle load-use stall |
+| Control hazards | EX-stage branch / JAL / JALR redirect and flush |
 | FPGA baseline | Tang Nano 9K, 65.71 MHz |
 
 ---
@@ -128,7 +128,8 @@ The processor is verified using self-checking SystemVerilog testbenches.
 | ISA behavior | Arithmetic, logic, loads/stores, branches, JAL/JALR, LUI/AUIPC |
 | Memory | Byte, halfword, and word accesses |
 | Pipeline | Stage flow and EX→WB execution |
-| Hazards | EX-stage RAW forwarding; load-use detection, stall, and bubble |
+| Hazards | RAW forwarding, WB-to-ID bypass, load-use stall, and control-flow flush |
+| Control flow | Taken branches, JAL, JALR, and not-taken branch sequencing |
 | Regression | Full supported-instruction suite |
 
 Pipeline timing and stage alignment were also inspected using GTKWave.
@@ -198,14 +199,10 @@ make flash
 
 Not yet implemented:
 
-* Branch / jump flush
 * CSR instructions
 * Exceptions and traps
 * Interrupts
 * Cache hierarchy
-
-Control-flow instructions currently need NOP padding until the flush checkpoint
-is complete.
 
 ---
 
@@ -221,7 +218,7 @@ is complete.
 * [x] Pipeline flow verification
 * [x] EX-stage RAW forwarding, including EX/MEM and MEM/WB priority
 * [x] Load-use stall and bubble insertion
-* [ ] Branch / jump pipeline flush
+* [x] Branch / jump pipeline flush
 * [ ] NOP-free program execution
 * [ ] Final FPGA timing comparison
 

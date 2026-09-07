@@ -29,7 +29,7 @@ module jal_forwarding_tb;
     always #5 clk = ~clk;
 
     // jal  x5, +4      // x5 receives PC + 4 = 4
-    // addi x10, x5, 1  // must receive x5 through MEM -> EX forwarding
+    // addi x10, x5, 1  // is refetched after the JAL flush and uses the link value
     always_comb begin
         case (instruction_address)
             32'h00: instruction_data = 32'h004002EF;
@@ -45,14 +45,18 @@ module jal_forwarding_tb;
         repeat (2) @(posedge clk);
         reset = 1'b0;
 
-        wait (dut.ex_opcode === 7'b0010011 && dut.ex_rd === 5'd10);
+        // A bubble keeps old datapath fields, so require an active register write
+        // before treating the EX contents as a real ADDI instruction.
+        wait (dut.ex_reg_write === 1'b1 &&
+              dut.ex_opcode === 7'b0010011 &&
+              dut.ex_rd === 5'd10);
         #1;
 
-        if (dut.forward_a !== 2'b10 || dut.ex_alu_result !== 32'd5)
-            $fatal(1, "JAL link forwarding failed: forward_a=%b result=%0d",
-                dut.forward_a, dut.ex_alu_result);
+        if (dut.rf.registers[5] !== 32'd4 || dut.ex_alu_result !== 32'd5)
+            $fatal(1, "JAL link use failed: x5=%0d result=%0d",
+                dut.rf.registers[5], dut.ex_alu_result);
 
-        $display("PASS: JAL link forwarding");
+        $display("PASS: JAL link use after flush");
         $finish;
     end
 
