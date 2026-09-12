@@ -5,17 +5,22 @@
 all: rv32i.fs
 
 RTL := $(wildcard ../../rtl/core/*.sv ../../rtl/pipeline/*.sv ../../rtl/memory/*.sv)
+PROGRAM ?= program.S
+PROGRAM_STEM := $(basename $(notdir $(PROGRAM)))
+PROGRAM_ELF := $(PROGRAM_STEM).elf
+PROGRAM_BIN := $(PROGRAM_STEM).bin
+PROGRAM_HEX := program.hex
 
-program.elf: program.S
-	riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -Ttext=0x0 -o program.elf program.S
+$(PROGRAM_ELF): $(PROGRAM)
+	riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -Ttext=0x0 -o $@ $<
 
-program.bin: program.elf
-	riscv64-unknown-elf-objcopy -O binary program.elf program.bin
+$(PROGRAM_BIN): $(PROGRAM_ELF)
+	riscv64-unknown-elf-objcopy -O binary $< $@
 
-program.hex: program.bin bin_to_hex.py
-	python3 bin_to_hex.py program.bin program.hex
+$(PROGRAM_HEX): $(PROGRAM_BIN) bin_to_hex.py
+	python3 bin_to_hex.py $(PROGRAM_BIN) $@
 
-rv32i.json: $(RTL) top.sv program.hex
+rv32i.json: $(RTL) top.sv $(PROGRAM_HEX)
 	yosys -p "read_verilog -sv $(RTL) top.sv; synth_gowin -top top -json rv32i.json"
 
 rv32i_pnr.json: rv32i.json tangnano9k.cst
@@ -37,5 +42,5 @@ flash: rv32i.fs
 	openFPGALoader -b tangnano9k rv32i.fs
 
 clean:
-	rm -f program.elf program.bin program.hex \
+	rm -f *.elf *.bin $(PROGRAM_HEX) \
 	      rv32i.json rv32i_pnr.json rv32i.fs

@@ -31,7 +31,7 @@ after a 16-bit multicycle CPU and a single-cycle RV32I core.
 | Datapath | IF → ID → EX → MEM → WB |
 | Data hazards | EX-stage forwarding, WB-to-ID bypass, one-cycle load-use stall |
 | Control hazards | EX-stage branch / JAL / JALR redirect and flush |
-| FPGA baseline | Tang Nano 9K, 65.71 MHz |
+| FPGA demo | Tang Nano 9K: NOP-free hazard demo verified on hardware |
 
 ---
 
@@ -180,10 +180,38 @@ Baseline `v0.1` result:
 | DFF               |  739 / 6480 (~11%) |
 | BSRAM             |       2 / 26 (~7%) |
 
+Hazard-handled checkpoint result:
+
+| Metric | Result |
+| --- | ---: |
+| Target clock | 27 MHz |
+| Post-route maximum frequency | **50.14 MHz** |
+| Hardware demonstration | PASS |
+
+### NOP-free hazard demo
+
+[`hazard_demo.S`](fpga/rv32i/hazard_demo.S) is a compact end-to-end program
+used for both simulation and FPGA validation. It exercises a store/load pair,
+load-use dependency, forwarding through a loop, a taken branch, `JAL`, and
+`JALR` return, without inserting software NOPs.
+
+Expected final state:
+
+| Signal / state | Expected value |
+| --- | ---: |
+| `RAM[0]` | 5 |
+| `t2` | 6 |
+| `t3` | 0 |
+| `a0` | 19 |
+
+The board exposes `a0[5:0]` on active-low LEDs. The FPGA demonstration showed
+the expected three illuminated LEDs for final value `a0 = 19`.
+
 Build:
 
 ```bash
 cd fpga/rv32i
+make PROGRAM=hazard_demo.S program.hex
 make
 ```
 
@@ -219,8 +247,8 @@ Not yet implemented:
 * [x] EX-stage RAW forwarding, including EX/MEM and MEM/WB priority
 * [x] Load-use stall and bubble insertion
 * [x] Branch / jump pipeline flush
-* [ ] NOP-free program execution
-* [ ] Final FPGA timing comparison
+* [x] NOP-free program execution in simulation and on Tang Nano 9K
+* [x] Hazard-handled FPGA synthesis, place-and-route, and timing check
 
 ---
 
