@@ -134,29 +134,17 @@ The processor is verified using self-checking SystemVerilog testbenches.
 
 Pipeline timing and stage alignment were also inspected using GTKWave.
 
-On Linux:
+The repository is used from **WSL (Ubuntu)**. From the repository root:
 
 ```bash
 make lint
 make test
 ```
 
-On Windows, first load the locally installed OSS CAD Suite environment, then
-compile and run the desired testbench with Icarus Verilog. The project keeps
-the generated simulator files under `build/`.
-
-The Windows helper starts WSL for the hazard-demo integration test, avoiding
-manual Icarus path configuration. Install Icarus once inside WSL if needed:
-
-```bash
-sudo apt install -y iverilog
-```
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows.ps1 -Action Test
-```
-
-Linting uses **Verilator**; simulation uses **Icarus Verilog**.
+`make test` runs the self-checking regression and writes concise results to
+the terminal. Detailed simulator output is kept in `build/logs/`; generated
+waveforms go in `build/waves/`. Linting uses **Verilator** and simulation uses
+**Icarus Verilog**.
 
 ---
 
@@ -218,38 +206,33 @@ Expected final state:
 The board exposes `a0[5:0]` on active-low LEDs. The FPGA demonstration showed
 the expected three illuminated LEDs for final value `a0 = 19`.
 
-Build:
-
-```bash
-cd fpga/rv32i
-make PROGRAM=hazard_demo.S program.hex
-make
-```
-
-Flash:
+From the repository root, build and load the default core-only program
+(`programs/nested_func.S`) with:
 
 ```bash
 make flash
 ```
 
-### Windows FPGA commands
+Select another core-only assembly program with:
 
-`scripts/windows.ps1` keeps the tool environments separate: WSL compiles the
-RISC-V assembly and runs simulation; the Windows OSS CAD Suite builds and
-programs the FPGA. From the repository root:
-
-```powershell
-# 1. Rebuild program.hex and rv32i.fs from the selected assembly program.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows.ps1 -Action Build -Program hazard_demo.S
-
-# 2. Load the already-built bitstream into FPGA SRAM.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows.ps1 -Action Flash
+```bash
+make PROGRAM=hazard_demo.S flash
 ```
 
-`Flash` changes only the volatile FPGA SRAM configuration; unplugging or
-resetting the board removes it. Whenever the assembly source changes, repeat
-both commands because `program.hex` is embedded into the bitstream during the
-build.
+Remove generated simulation, waveform, and FPGA outputs:
+
+```bash
+make clean
+```
+
+The VS Code tasks mirror these commands: **RTL: Full regression (WSL)**,
+**RTL: Lint (WSL)**, **FPGA: Flash default program (WSL)**,
+**FPGA: Flash hazard demo (WSL)**, and **Wave: Open RAW hazard VCD (WSL)**.
+
+For FPGA programming, the board must first be attached to WSL after each USB
+reconnect. Then `make flash` builds the assembly image, synthesizes the FPGA,
+and loads the resulting bitstream into SRAM. This configuration is volatile:
+unplugging or resetting the board clears it.
 
 `fpga/rv32i/programs/nested_func.S` is an earlier core-only program retained
 as a second hardware example. It uses stack RAM and nested `JAL`/`JALR` calls,

@@ -17,7 +17,7 @@ module hazard_demo_tb;
 
     // The generated program HEX acts as the instruction ROM.
     instruction_memory #(
-        .INIT_FILE("fpga/rv32i/hazard_demo.hex")
+        .INIT_FILE("fpga/rv32i/program.hex")
     ) imem (
         .pc          (instruction_address),
         .instruction (instruction_data)

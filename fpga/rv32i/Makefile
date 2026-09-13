@@ -5,11 +5,14 @@
 all: rv32i.fs
 
 RTL := $(wildcard ../../rtl/core/*.sv ../../rtl/pipeline/*.sv ../../rtl/memory/*.sv)
-PROGRAM ?= program.S
+# The default is a core-and-RAM-only program that runs on the current FPGA top.
+# MMIO examples require the later SoC integration top instead.
+PROGRAM ?= programs/nested_func.S
 PROGRAM_STEM := $(basename $(notdir $(PROGRAM)))
 PROGRAM_ELF := $(PROGRAM_STEM).elf
 PROGRAM_BIN := $(PROGRAM_STEM).bin
 PROGRAM_HEX := program.hex
+PROGRAM_SELECTION := .selected-program
 
 $(PROGRAM_ELF): $(PROGRAM)
 	riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -Ttext=0x0 -o $@ $<
@@ -17,7 +20,10 @@ $(PROGRAM_ELF): $(PROGRAM)
 $(PROGRAM_BIN): $(PROGRAM_ELF)
 	riscv64-unknown-elf-objcopy -O binary $< $@
 
-$(PROGRAM_HEX): $(PROGRAM_BIN) bin_to_hex.py
+$(PROGRAM_SELECTION): FORCE
+	@printf '%s\n' '$(PROGRAM)' | cmp -s - $@ || printf '%s\n' '$(PROGRAM)' > $@
+
+$(PROGRAM_HEX): $(PROGRAM_BIN) $(PROGRAM_SELECTION) bin_to_hex.py
 	python3 bin_to_hex.py $(PROGRAM_BIN) $@
 
 rv32i.json: $(RTL) top.sv $(PROGRAM_HEX)
@@ -36,11 +42,11 @@ rv32i_pnr.json: rv32i.json tangnano9k.cst
 rv32i.fs: rv32i_pnr.json
 	gowin_pack -d GW1N-9C -o rv32i.fs rv32i_pnr.json
 
-.PHONY: flash
+.PHONY: flash FORCE
 
 flash: rv32i.fs
 	openFPGALoader -b tangnano9k rv32i.fs
 
 clean:
-	rm -f *.elf *.bin $(PROGRAM_HEX) \
+	rm -f *.elf *.bin $(PROGRAM_HEX) $(PROGRAM_SELECTION) \
 	      rv32i.json rv32i_pnr.json rv32i.fs

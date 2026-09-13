@@ -4,6 +4,7 @@ fpga/**/*.bin
 fpga/**/*.hex
 fpga/**/*.json
 fpga/**/*.fs
+fpga/**/.selected-program
 
 
 # Simulation outputs

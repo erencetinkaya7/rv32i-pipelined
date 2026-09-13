@@ -1,9 +1,16 @@
 RTL := rtl/core/*.sv rtl/pipeline/*.sv rtl/memory/*.sv
 BUILD := build
+LOG_DIR := $(BUILD)/logs
+WAVE_DIR := $(BUILD)/waves
+FPGA_DIR := fpga/rv32i
+PROGRAM ?= programs/nested_func.S
+TESTS := arithmetic_regression branch_flush branch_forwarding branch_not_taken \
+	branch_regression branch ex_wb hazard_demo id_stage if_stage jal_flush \
+	jal_forwarding jalr_flush jalr_forwarding jalr jump load_use_branch \
+	load_use_hazard load_use_jalr load_use_stall load_use_store memory \
+	pipeline_flow raw_hazard subword_memory u_type
 
-.PHONY: core test-if test-id test-ex-wb test-memory test-subword \
-      test-branch test-jump test-jalr \
-      test-arithmetic test-utype test-branches
+.PHONY: core test fpga flash clean
 $(BUILD):
 	mkdir -p $(BUILD)
 
@@ -11,74 +18,55 @@ core: $(BUILD)
 	iverilog -g2012 -s rv32i_pipelined_core \
 	-o $(BUILD)/pipeline_sim $(RTL)
 
-test-if: $(BUILD)
-	iverilog -g2012 -s if_stage_tb \
-	-o $(BUILD)/if_stage_tb_sim $(RTL) tb/if_stage_tb.sv
-	vvp $(BUILD)/if_stage_tb_sim
+# The stem maps directly to both tb/<stem>_tb.sv and module <stem>_tb.
+test-%: $(BUILD)
+	@mkdir -p $(LOG_DIR)
+	@echo "==> $*_tb"
+	@iverilog -g2012 -s $*_tb -o $(BUILD)/$*_tb_sim $(RTL) tb/$*_tb.sv > $(LOG_DIR)/$*_tb.log 2>&1 || { cat $(LOG_DIR)/$*_tb.log; exit 1; }
+	@vvp $(BUILD)/$*_tb_sim >> $(LOG_DIR)/$*_tb.log 2>&1 || { cat $(LOG_DIR)/$*_tb.log; exit 1; }
+	@grep -E "PASS|FAIL" $(LOG_DIR)/$*_tb.log || echo "PASS $*_tb"
 
-test-id: $(BUILD)
-	iverilog -g2012 -s id_stage_tb \
-	-o $(BUILD)/id_stage_tb_sim $(RTL) tb/id_stage_tb.sv
-	vvp $(BUILD)/id_stage_tb_sim
+# The integration test needs its assembly image regenerated before simulation.
+test-hazard_demo: $(BUILD)
+	@mkdir -p $(LOG_DIR)
+	@echo "==> hazard_demo_tb"
+	@$(MAKE) -C $(FPGA_DIR) PROGRAM=hazard_demo.S program.hex > $(LOG_DIR)/hazard_demo_tb.log 2>&1 || { cat $(LOG_DIR)/hazard_demo_tb.log; exit 1; }
+	@iverilog -g2012 -s hazard_demo_tb -o $(BUILD)/hazard_demo_tb_sim $(RTL) tb/hazard_demo_tb.sv >> $(LOG_DIR)/hazard_demo_tb.log 2>&1 || { cat $(LOG_DIR)/hazard_demo_tb.log; exit 1; }
+	@vvp $(BUILD)/hazard_demo_tb_sim >> $(LOG_DIR)/hazard_demo_tb.log 2>&1 || { cat $(LOG_DIR)/hazard_demo_tb.log; exit 1; }
+	@grep -E "PASS|FAIL" $(LOG_DIR)/hazard_demo_tb.log || echo "PASS hazard_demo_tb"
 
-test-ex-wb: $(BUILD)
-	iverilog -g2012 -s ex_wb_tb \
-	-o $(BUILD)/ex_wb_tb_sim $(RTL) tb/ex_wb_tb.sv
-	vvp $(BUILD)/ex_wb_tb_sim
-
-test-memory: $(BUILD)
-	iverilog -g2012 -s memory_tb \
-	-o $(BUILD)/memory_tb_sim $(RTL) tb/memory_tb.sv
-	vvp $(BUILD)/memory_tb_sim
-
-test-subword: $(BUILD)
-	iverilog -g2012 -s subword_memory_tb \
-	-o $(BUILD)/subword_memory_tb_sim $(RTL) tb/subword_memory_tb.sv
-	vvp $(BUILD)/subword_memory_tb_sim
-
-test-branch: $(BUILD)
-	iverilog -g2012 -s branch_tb \
-	-o $(BUILD)/branch_tb_sim $(RTL) tb/branch_tb.sv
-	vvp $(BUILD)/branch_tb_sim
-
-test-jump: $(BUILD)
-	iverilog -g2012 -s jump_tb \
-	-o $(BUILD)/jump_tb_sim $(RTL) tb/jump_tb.sv
-	vvp $(BUILD)/jump_tb_sim
-
-test-jalr: $(BUILD)
-	iverilog -g2012 -s jalr_tb \
-	-o $(BUILD)/jalr_tb_sim $(RTL) tb/jalr_tb.sv
-	vvp $(BUILD)/jalr_tb_sim
-
-test-arithmetic: $(BUILD)
-	iverilog -g2012 -s arithmetic_regression_tb \
-	-o $(BUILD)/arithmetic_regression_tb_sim $(RTL) tb/arithmetic_regression_tb.sv
-	vvp $(BUILD)/arithmetic_regression_tb_sim
-
-test-utype: $(BUILD)
-	iverilog -g2012 -s u_type_tb \
-	-o $(BUILD)/u_type_tb_sim $(RTL) tb/u_type_tb.sv
-	vvp $(BUILD)/u_type_tb_sim
-
-test-branches: $(BUILD)
-	iverilog -g2012 -s branch_regression_tb \
-	-o $(BUILD)/branch_regression_tb_sim $(RTL) tb/branch_regression_tb.sv
-	vvp $(BUILD)/branch_regression_tb_sim
-
-test-flow: $(BUILD)
-	iverilog -g2012 -s pipeline_flow_tb \
-	-o $(BUILD)/pipeline_flow_tb_sim $(RTL) tb/pipeline_flow_tb.sv
-	vvp $(BUILD)/pipeline_flow_tb_sim
-
-	
-test: test-if test-id test-ex-wb test-memory test-subword \
-      test-branch test-jump test-jalr \
-      test-arithmetic test-utype test-branches
+test:
+	@passed=0; failed=0; \
+	for test_name in $(TESTS); do \
+		if $(MAKE) --no-print-directory test-$$test_name; then \
+			passed=$$((passed + 1)); \
+		else \
+			failed=$$((failed + 1)); \
+		fi; \
+	done; \
+	echo "========================================"; \
+	echo "REGRESSION: PASS $$passed/$(words $(TESTS)), FAIL $$failed/$(words $(TESTS))"; \
+	echo "========================================"; \
+	test $$failed -eq 0
+	@mkdir -p $(WAVE_DIR)
+	@find . -maxdepth 1 -type f -name '*.vcd' -exec mv -f {} $(WAVE_DIR) \;
 
 lint:
 	verilator --lint-only -Wall -Wno-fatal \
 	--top-module rv32i_pipelined_core $(RTL)
 
+# Build or program the Tang Nano 9K using the core-only default program.
+# Override with: make PROGRAM=programs/<name>.S flash
+fpga:
+	$(MAKE) -C $(FPGA_DIR) PROGRAM=$(PROGRAM)
+
+flash:
+	$(MAKE) -C $(FPGA_DIR) PROGRAM=$(PROGRAM) flash
+
 clean:
-	rm -rf $(BUILD)
+	# Remove only generated simulation, waveform, and FPGA outputs.
+	rm -f $(BUILD)/*_sim
+	rm -rf $(BUILD)/windows-regression
+	rm -rf $(LOG_DIR)
+	rm -rf $(WAVE_DIR)
+	$(MAKE) -C $(FPGA_DIR) clean

@@ -1,0 +1,42 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "RTL: Full regression (WSL)",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": ["bash", "-lc", "source ~/tools/oss-cad-suite/environment && cd /mnt/c/Users/erenc/rv32i-pipelined && make test"],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "RTL: Lint (WSL)",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": ["bash", "-lc", "source ~/tools/oss-cad-suite/environment && cd /mnt/c/Users/erenc/rv32i-pipelined && make lint"],
+      "problemMatcher": []
+    },
+    {
+      "label": "FPGA: Flash default program (WSL)",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": ["bash", "-lc", "source ~/tools/oss-cad-suite/environment && cd /mnt/c/Users/erenc/rv32i-pipelined && make flash"],
+      "problemMatcher": []
+    },
+    {
+      "label": "FPGA: Flash hazard demo (WSL)",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": ["bash", "-lc", "source ~/tools/oss-cad-suite/environment && cd /mnt/c/Users/erenc/rv32i-pipelined && make PROGRAM=hazard_demo.S flash"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Wave: Open RAW hazard VCD (WSL)",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": ["bash", "-lc", "source ~/tools/oss-cad-suite/environment && cd /mnt/c/Users/erenc/rv32i-pipelined && gtkwave build/waves/raw_hazard.vcd"],
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "editor.rulers": [100],
+  "editor.renderWhitespace": "selection",
+  "editor.tabSize": 4,
+  "editor.insertSpaces": true,
+  "files.exclude": {
+    "build/tools": true,
+    "build/windows-regression": true,
+    "**/*.elf": true,
+    "**/*.bin": true,
+    "**/*.hex": true,
+    "fpga/**/*.json": true,
+    "**/*.fs": true,
+    "**/*.vcd": true,
+    "**/*_sim": true
+  }
+}
