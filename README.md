@@ -32,7 +32,7 @@ after a 16-bit multicycle CPU and a single-cycle RV32I core.
 | Data hazards | EX-stage forwarding, WB-to-ID bypass, one-cycle load-use stall |
 | Control hazards | EX-stage branch / JAL / JALR redirect and flush |
 | FPGA demo | Tang Nano 9K: NOP-free hazard demo verified on hardware |
-| SoC | RAM plus memory-mapped GPIO output verified on hardware |
+| SoC | RAM, GPIO, timer, and UART TX verified on Tang Nano 9K |
 
 ---
 
@@ -157,18 +157,25 @@ Target board:
 
 ### Current SoC checkpoint
 
-The FPGA top now instantiates `rv32i_pipelined_soc`, which keeps the CPU core
-independent from its memory map. The first memory-mapped peripheral is a
-32-bit GPIO output register.
+The FPGA top instantiates `rv32i_pipelined_soc`, keeping the CPU core
+separate from its memory map. RAM and peripherals share one data port; the
+address decoder selects the target and a read-data multiplexer returns the
+selected value to the core.
 
 | Address | Device | Current behavior |
 | --- | --- | --- |
 | `0x0000_0000`–`0x0000_00FF` | Data RAM | Load and store |
 | `0x1000_0000` | GPIO output | Store updates `gpio_out[31:0]` |
+| `0x1000_0004` | GPIO input | Bit 0 is the active-high user-button state |
+| `0x2000_0000` | UART TX data | Store sends the low byte |
+| `0x2000_0004` | UART status | `1` while a transmission is in progress |
+| `0x3000_0000` | Timer load | Store starts the down-counter |
+| `0x3000_0004` | Timer status | `1` while the timer is busy |
 
 On Tang Nano 9K, `gpio_out[5:0]` drives the active-low onboard LEDs. The
-`gpio_demo.S` FPGA demonstration writes `21` (`0b010101`), producing the
-expected LED 1/3/5 pattern.
+`gpio_demo.S` demonstration writes `21` (`0b010101`). `soc_integration_demo.S`
+adds a timer-driven LED chaser, user-button direction changes, and UART
+messages (`SOC READY`, then `L`/`R` on direction changes).
 
 FPGA flow:
 
@@ -235,13 +242,48 @@ Select another core-only assembly program with:
 make PROGRAM=hazard_demo.S flash
 ```
 
-Named shortcuts are also available:
+Named shortcuts keep program selection explicit:
 
 ```bash
 make flash-gpio
 make flash-hazard
 make flash-nested
+make flash-uart
+make flash-timer
+make flash-button
+make flash-integration
 ```
+
+`make flash` deliberately retains `programs/gpio_demo.S` as its default.
+Use a named shortcut or `make flash PROGRAM=programs/<name>.S` whenever the
+program matters; the flash command prints the selected program before it
+builds.
+
+### UART on real hardware
+
+The Tang Nano JTAG and USB serial functions share the FTDI connection under
+WSL. Stop any running monitor before programming, release the serial driver,
+flash, then restore the driver and monitor the UART:
+
+```bash
+sudo modprobe -r ftdi_sio
+make flash-uart
+sudo modprobe ftdi_sio
+make uart-monitor
+```
+
+The monitor uses `/dev/ttyUSB1` at 115200 baud by default and prints
+`RV32I UART OK!` for the UART smoke test. It intentionally uses Ubuntu's
+`/usr/bin/python3`, because OSS CAD Suite's bundled Python does not include
+`pyserial`. Override the detected port when needed:
+
+```bash
+make uart-monitor UART_PORT=/dev/ttyUSB1
+```
+
+For the combined demonstration, use `make flash-integration`, start the
+monitor, then press the board reset button. The expected boot message is
+`SOC READY`; the user button emits `L` or `R` as it reverses the chaser.
 
 Remove generated simulation, waveform, and FPGA outputs:
 

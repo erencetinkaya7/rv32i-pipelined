@@ -4,17 +4,18 @@
 
 all: rv32i.fs
 
-RTL := $(wildcard ../../rtl/core/*.sv ../../rtl/pipeline/*.sv ../../rtl/memory/*.sv ../../rtl/soc/*.sv)
+RTL := $(wildcard ../../rtl/core/*.sv ../../rtl/pipeline/*.sv ../../rtl/memory/*.sv ../../rtl/peripherals/*.sv ../../rtl/soc/*.sv)
 # The default validates the current RAM + MMIO GPIO SoC checkpoint.
 PROGRAM ?= programs/gpio_demo.S
+TIMER_TICKS ?= 13500000
 PROGRAM_STEM := $(basename $(notdir $(PROGRAM)))
 PROGRAM_ELF := $(PROGRAM_STEM).elf
 PROGRAM_BIN := $(PROGRAM_STEM).bin
 PROGRAM_HEX := program.hex
 PROGRAM_SELECTION := .selected-program
 
-$(PROGRAM_ELF): $(PROGRAM)
-	riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -Ttext=0x0 -o $@ $<
+$(PROGRAM_ELF): FORCE $(PROGRAM)
+	riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -DTIMER_TICKS=$(TIMER_TICKS) -Ttext=0x0 -o $@ $(PROGRAM)
 
 $(PROGRAM_BIN): $(PROGRAM_ELF)
 	riscv64-unknown-elf-objcopy -O binary $< $@

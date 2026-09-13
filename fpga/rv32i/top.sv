@@ -16,7 +16,7 @@ module top (
     logic [31:0] debug_a0;
     logic [31:0] gpio_out;
 
-    // Reset synchronizer
+    // Synchronize the physical reset button before using it as reset.
     always_ff @(posedge clk) begin
         reset_btn_meta <= reset_btn;
         reset_btn_sync <= reset_btn_meta;
@@ -32,18 +32,19 @@ module top (
 
     // The SoC owns memory and MMIO; the board top owns reset and physical pins.
     rv32i_pipelined_soc #(
-        .IMEM_INIT_FILE("program.hex")
+        .IMEM_INIT_FILE ("program.hex"),
+        // Tang Nano 9K onboard BL702 USB-UART default.
+        .UART_BAUD_RATE (115_200)
     ) soc (
         .clk      (clk),
         .reset    (reset),
+        .btn      (btn),
         .debug_a0 (debug_a0),
-        .gpio_out (gpio_out)
+        .gpio_out (gpio_out),
+        .uart_tx  (uart_tx)
     );
 
     // Onboard LEDs are active-low
     assign led = ~gpio_out[5:0];
-
-    // Reserved until the UART SoC checkpoint.
-    assign uart_tx = 1'b1;
 
 endmodule
