@@ -145,6 +145,17 @@ On Windows, first load the locally installed OSS CAD Suite environment, then
 compile and run the desired testbench with Icarus Verilog. The project keeps
 the generated simulator files under `build/`.
 
+The Windows helper starts WSL for the hazard-demo integration test, avoiding
+manual Icarus path configuration. Install Icarus once inside WSL if needed:
+
+```bash
+sudo apt install -y iverilog
+```
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows.ps1 -Action Test
+```
+
 Linting uses **Verilator**; simulation uses **Icarus Verilog**.
 
 ---
@@ -220,6 +231,29 @@ Flash:
 ```bash
 make flash
 ```
+
+### Windows FPGA commands
+
+`scripts/windows.ps1` keeps the tool environments separate: WSL compiles the
+RISC-V assembly and runs simulation; the Windows OSS CAD Suite builds and
+programs the FPGA. From the repository root:
+
+```powershell
+# 1. Rebuild program.hex and rv32i.fs from the selected assembly program.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows.ps1 -Action Build -Program hazard_demo.S
+
+# 2. Load the already-built bitstream into FPGA SRAM.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows.ps1 -Action Flash
+```
+
+`Flash` changes only the volatile FPGA SRAM configuration; unplugging or
+resetting the board removes it. Whenever the assembly source changes, repeat
+both commands because `program.hex` is embedded into the bitstream during the
+build.
+
+`fpga/rv32i/programs/nested_func.S` is an earlier core-only program retained
+as a second hardware example. It uses stack RAM and nested `JAL`/`JALR` calls,
+then leaves `a0 = 11`.
 
 ---
 
