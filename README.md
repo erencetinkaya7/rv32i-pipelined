@@ -32,6 +32,7 @@ after a 16-bit multicycle CPU and a single-cycle RV32I core.
 | Data hazards | EX-stage forwarding, WB-to-ID bypass, one-cycle load-use stall |
 | Control hazards | EX-stage branch / JAL / JALR redirect and flush |
 | FPGA demo | Tang Nano 9K: NOP-free hazard demo verified on hardware |
+| SoC | RAM plus memory-mapped GPIO output verified on hardware |
 
 ---
 
@@ -154,6 +155,21 @@ Target board:
 
 **Sipeed Tang Nano 9K — Gowin GW1NR-9**
 
+### Current SoC checkpoint
+
+The FPGA top now instantiates `rv32i_pipelined_soc`, which keeps the CPU core
+independent from its memory map. The first memory-mapped peripheral is a
+32-bit GPIO output register.
+
+| Address | Device | Current behavior |
+| --- | --- | --- |
+| `0x0000_0000`–`0x0000_00FF` | Data RAM | Load and store |
+| `0x1000_0000` | GPIO output | Store updates `gpio_out[31:0]` |
+
+On Tang Nano 9K, `gpio_out[5:0]` drives the active-low onboard LEDs. The
+`gpio_demo.S` FPGA demonstration writes `21` (`0b010101`), producing the
+expected LED 1/3/5 pattern.
+
 FPGA flow:
 
 ```text
@@ -206,8 +222,8 @@ Expected final state:
 The board exposes `a0[5:0]` on active-low LEDs. The FPGA demonstration showed
 the expected three illuminated LEDs for final value `a0 = 19`.
 
-From the repository root, build and load the default core-only program
-(`programs/nested_func.S`) with:
+From the repository root, build and load the default GPIO demo
+(`programs/gpio_demo.S`) with:
 
 ```bash
 make flash
@@ -217,6 +233,14 @@ Select another core-only assembly program with:
 
 ```bash
 make PROGRAM=hazard_demo.S flash
+```
+
+Named shortcuts are also available:
+
+```bash
+make flash-gpio
+make flash-hazard
+make flash-nested
 ```
 
 Remove generated simulation, waveform, and FPGA outputs:

@@ -4,10 +4,9 @@
 
 all: rv32i.fs
 
-RTL := $(wildcard ../../rtl/core/*.sv ../../rtl/pipeline/*.sv ../../rtl/memory/*.sv)
-# The default is a core-and-RAM-only program that runs on the current FPGA top.
-# MMIO examples require the later SoC integration top instead.
-PROGRAM ?= programs/nested_func.S
+RTL := $(wildcard ../../rtl/core/*.sv ../../rtl/pipeline/*.sv ../../rtl/memory/*.sv ../../rtl/soc/*.sv)
+# The default validates the current RAM + MMIO GPIO SoC checkpoint.
+PROGRAM ?= programs/gpio_demo.S
 PROGRAM_STEM := $(basename $(notdir $(PROGRAM)))
 PROGRAM_ELF := $(PROGRAM_STEM).elf
 PROGRAM_BIN := $(PROGRAM_STEM).bin
