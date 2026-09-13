@@ -148,6 +148,7 @@ uart-monitor:
 clean:
 	# Remove only generated simulation, waveform, and FPGA outputs.
 	rm -f $(BUILD)/*_sim
+	rm -f $(BUILD)/*.log
 	rm -rf $(BUILD)/windows-regression
 	rm -rf $(LOG_DIR)
 	rm -rf $(WAVE_DIR)
