@@ -5,7 +5,7 @@ module rv32i_pipelined_soc #(
 ) (
     input  logic        clk,
     input  logic        reset,
-    
+
     output logic [31:0] debug_a0,
     output logic [31:0] gpio_out
 );
