@@ -14,6 +14,7 @@ module load_use_stall_tb;
     logic [2:0]  data_funct3;
     logic [31:0] debug_a0;
     integer      hazard_cycles = 0;
+    logic [31:0] held_pc, held_instruction;
 
     rv32i_pipelined_core dut (
         .clk                 (clk),
@@ -50,11 +51,24 @@ module load_use_stall_tb;
     end
 
     initial begin
-        $dumpfile("load_use_stall.vcd");
+        $dumpfile("build/waves/load_use_stall.vcd");
         $dumpvars(0, load_use_stall_tb);
 
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 1'b0;
+
+        wait (dut.load_use_hazard === 1'b1);
+        @(negedge clk);
+        held_pc = instruction_address;
+        held_instruction = dut.if_id_instruction;
+        @(posedge clk);
+        #1;
+        if (instruction_address !== held_pc || dut.if_id_instruction !== held_instruction)
+            $fatal(1, "Stall did not hold PC and IF/ID");
+        if (dut.ex_reg_write !== 1'b0 || dut.ex_mem_write !== 1'b0 ||
+            dut.ex_branch_enable !== 1'b0 || dut.ex_jump !== 1'b0 || dut.ex_jalr !== 1'b0)
+            $fatal(1, "Bubble retained an EX side effect");
 
         repeat (10) @(posedge clk);
         #1;
@@ -69,4 +83,8 @@ module load_use_stall_tb;
         $finish;
     end
 
+    initial begin
+        repeat (100) @(posedge clk);
+        $fatal(1, "FAIL: stall test timeout");
+    end
 endmodule

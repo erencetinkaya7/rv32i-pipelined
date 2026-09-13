@@ -55,6 +55,22 @@ module load_use_hazard_tb;
                 endcase
             end
 
+            // A load into x0 cannot create a dependency.
+            3: begin
+                case (instruction_address)
+                    32'h00: instruction_data = 32'h00002003; // lw x0, 0(x0)
+                    32'h04: instruction_data = 32'h00100513; // addi x10, x0, 1
+                    default: ;
+                endcase
+            end
+            // LUI has no rs1, even when immediate bits look like x5.
+            4: begin
+                case (instruction_address)
+                    32'h00: instruction_data = 32'h00002283; // lw x5, 0(x0)
+                    32'h04: instruction_data = 32'h00028537; // lui x10, 0x28
+                    default: ;
+                endcase
+            end
             default: ;
         endcase
     end
@@ -90,14 +106,22 @@ module load_use_hazard_tb;
     endtask
 
     initial begin
-        $dumpfile("load_use_hazard.vcd");
+        $dumpfile("build/waves/load_use_hazard.vcd");
         $dumpvars(0, load_use_hazard_tb);
 
         check_hazard(1, 1'b1, "load-use hazard detected");
         check_hazard(2, 1'b0, "I-type immediate does not cause false hazard");
 
+        check_hazard(3, 1'b0, "load to x0 does not stall");
+        check_hazard(4, 1'b0, "LUI immediate does not cause false hazard");
+
         $display("PASS: load-use hazard detection");
         $finish;
     end
 
+    // Bound waits so a broken DUT fails instead of hanging.
+    initial begin
+        repeat (10000) @(posedge clk);
+        $fatal(1, "FAIL: simulation timeout");
+    end
 endmodule

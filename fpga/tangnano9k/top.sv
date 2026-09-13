@@ -32,8 +32,8 @@ module top (
 
     // The SoC owns memory and MMIO; the board top owns reset and physical pins.
     rv32i_pipelined_soc #(
-        .IMEM_INIT_FILE ("program.hex"),
-        // Tang Nano 9K onboard BL702 USB-UART default.
+        .IMEM_INIT_FILE ("build/programs/program.hex"),
+        // Board UART baud rate.
         .UART_BAUD_RATE (115_200)
     ) soc (
         .clk      (clk),

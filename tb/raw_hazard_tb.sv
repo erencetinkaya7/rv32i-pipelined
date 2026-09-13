@@ -159,6 +159,25 @@ module raw_hazard_tb;
                 endcase
             end
 
+            // Both operands must use the newest value, including rs2.
+            6: begin
+                case (instruction_address)
+                    32'h00: instruction_data = 32'h00100293; // addi x5,x0,1
+                    32'h04: instruction_data = 32'h00200293; // addi x5,x0,2
+                    32'h08: instruction_data = 32'h00528533; // add x10,x5,x5
+                    default: ;
+                endcase
+            end
+            // Producer is in WB while consumer reads registers in ID.
+            7: begin
+                case (instruction_address)
+                    32'h00: instruction_data = 32'h00700293; // addi x5,x0,7
+                    32'h04: instruction_data = 32'h00300413; // addi x8,x0,3
+                    32'h08: instruction_data = 32'h00400493; // addi x9,x0,4
+                    32'h0c: instruction_data = 32'h00528533; // add x10,x5,x5
+                    default: ;
+                endcase
+            end
             default:
                 instruction_data = 32'h00000013;
 
@@ -232,7 +251,7 @@ module raw_hazard_tb;
     endtask
 
     initial begin
-        $dumpfile("raw_hazard.vcd");
+        $dumpfile("build/waves/raw_hazard.vcd");
         $dumpvars(0, raw_hazard_tb);
 
         reset     = 1'b1;
@@ -264,9 +283,17 @@ module raw_hazard_tb;
             "x0 forwarding protection"
         );
 
+        run_test(6, 32'd4, "MEM priority on both operands");
+        run_test(7, 32'd14, "WB-to-ID bypass on both operands");
+
         $display("PASS: all RAW forwarding tests passed");
 
         $finish;
     end
 
+    // Bound waits so a broken DUT fails instead of hanging.
+    initial begin
+        repeat (10000) @(posedge clk);
+        $fatal(1, "FAIL: simulation timeout");
+    end
 endmodule

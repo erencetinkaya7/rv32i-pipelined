@@ -55,6 +55,7 @@ module u_type_tb;
 
     initial begin
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 0;
 
         repeat (12) @(posedge clk);

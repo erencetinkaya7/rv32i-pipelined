@@ -1,54 +1,59 @@
 `timescale 1ns/1ps
 
 module timer_tb;
-    logic        clk = 1'b0;
-    logic        reset = 1'b1;
-    logic        start = 1'b0;
-    logic [31:0] count_in = 32'b0;
-    logic        busy;
-    logic        done;
+    logic clk = 0, reset = 1, start = 0;
+    logic [31:0] count_in = 0;
+    logic busy, done;
 
-    timer dut (
-        .clk      (clk),
-        .reset    (reset),
-        .start    (start),
-        .count_in (count_in),
-        .busy     (busy),
-        .done     (done)
-    );
-
+    timer dut (.clk(clk), .reset(reset), .start(start),
+               .count_in(count_in), .busy(busy), .done(done));
     always #5 clk = ~clk;
 
-    initial begin
-        repeat (2) @(posedge clk);
-        @(negedge clk);
-        reset = 1'b0;
-
-        // A non-zero write starts the countdown and raises busy.
-        count_in = 32'd3;
-        start    = 1'b1;
-        @(negedge clk);
-        start = 1'b0;
-        if (busy !== 1'b1) $fatal(1, "FAIL: timer did not start");
-
-        wait (done == 1'b1);
-        if (busy !== 1'b0) $fatal(1, "FAIL: busy remained high after completion");
-
-        // Completion is a pulse, not a sticky status bit.
+    // Drive on falling edges; inspect after the next rising edge.
+    task automatic tick;
         @(posedge clk);
         #1;
-        if (done !== 1'b0) $fatal(1, "FAIL: done pulse lasted too long");
+    endtask
 
-        // A zero write completes immediately without asserting busy.
-        @(negedge clk);
-        count_in = 32'd0;
-        start    = 1'b1;
-        @(negedge clk);
-        start = 1'b0;
-        if (done !== 1'b1 || busy !== 1'b0)
-            $fatal(1, "FAIL: zero-count behavior is incorrect");
+    task automatic check(input logic expected_busy, expected_done);
+        if (busy !== expected_busy || done !== expected_done)
+            $fatal(1, "Timer: busy/done=%b/%b, expected %b/%b",
+                   busy, done, expected_busy, expected_done);
+    endtask
 
-        $display("PASS: countdown timer behavior");
+    initial begin
+        tick(); check(0, 0);
+        @(negedge clk); reset = 0; start = 1; count_in = 3;
+        tick(); check(1, 0);
+        @(negedge clk); start = 0;
+        tick(); check(1, 0);
+        // A new request while busy must not reload the counter.
+        @(negedge clk); start = 1; count_in = 99;
+        tick(); check(1, 0);
+        @(negedge clk); start = 0;
+        tick(); check(0, 1);
+        tick(); check(0, 0);
+
+        @(negedge clk); start = 1; count_in = 0;
+        tick(); check(0, 1);
+        @(negedge clk); start = 0;
+        tick(); check(0, 0);
+
+        @(negedge clk); start = 1; count_in = 1;
+        tick(); check(1, 0);
+        @(negedge clk); start = 0;
+        tick(); check(0, 1);
+        tick(); check(0, 0);
+
+        // Reset cancels an active countdown and wins over start.
+        @(negedge clk); start = 1; count_in = 100;
+        tick(); check(1, 0);
+        @(negedge clk); reset = 1;
+        tick(); check(0, 0);
+        @(negedge clk); reset = 0; start = 0;
+        repeat (3) begin tick(); check(0, 0); end
+
+        $display("PASS: timer exact count, 0/1, busy write, pulse and active reset");
         $finish;
     end
 endmodule

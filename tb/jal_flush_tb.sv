@@ -37,6 +37,7 @@ module jal_flush_tb;
 
     initial begin
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 0;
 
         repeat (14) @(posedge clk);

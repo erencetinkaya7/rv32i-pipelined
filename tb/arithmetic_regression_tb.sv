@@ -94,6 +94,7 @@ module arithmetic_regression_tb;
 
     initial begin
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 0;
 
         repeat (40) @(posedge clk);

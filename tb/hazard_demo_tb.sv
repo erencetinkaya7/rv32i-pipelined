@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-// Integration test for fpga/rv32i/hazard_demo.S after it is compiled to HEX.
+// Integration test for programs/hazard_demo.S after it is compiled to HEX.
 module hazard_demo_tb;
 
     logic clk = 1'b0;
@@ -17,7 +17,7 @@ module hazard_demo_tb;
 
     // The generated program HEX acts as the instruction ROM.
     instruction_memory #(
-        .INIT_FILE("fpga/rv32i/program.hex")
+        .INIT_FILE("build/programs/program.hex")
     ) imem (
         .pc          (instruction_address),
         .instruction (instruction_data)
@@ -50,6 +50,7 @@ module hazard_demo_tb;
 
     initial begin
         repeat (3) @(posedge clk);
+        @(negedge clk);
         reset = 1'b0;
 
         // Enough cycles for store/load, three loop iterations, and call/return.

@@ -43,11 +43,12 @@ module id_stage_tb;
     end
 
     initial begin
-        $dumpfile("id_stage.vcd");
+        $dumpfile("build/waves/id_stage.vcd");
         $dumpvars(0, id_stage_tb);
 
         // Reset
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 0;
 
         // ADDI enters IF/ID

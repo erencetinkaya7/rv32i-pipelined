@@ -43,10 +43,11 @@ module jump_tb;
     end
 
     initial begin
-        $dumpfile("jump.vcd");
+        $dumpfile("build/waves/jump.vcd");
         $dumpvars(0, jump_tb);
 
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 0;
 
         repeat (12) @(posedge clk);

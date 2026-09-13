@@ -40,10 +40,11 @@ module branch_forwarding_tb;
     end
 
     initial begin
-        $dumpfile("branch_forwarding.vcd");
+        $dumpfile("build/waves/branch_forwarding.vcd");
         $dumpvars(0, branch_forwarding_tb);
 
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 1'b0;
 
         wait (dut.ex_branch_enable === 1'b1);
@@ -56,4 +57,9 @@ module branch_forwarding_tb;
         $finish;
     end
 
+    // Bound waits so a broken DUT fails instead of hanging.
+    initial begin
+        repeat (10000) @(posedge clk);
+        $fatal(1, "FAIL: simulation timeout");
+    end
 endmodule

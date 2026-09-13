@@ -4,7 +4,8 @@ module branch_regression_tb;
 
     logic clk = 0;
     logic reset = 1;
-    logic [2:0] test_id;
+    logic [3:0] test_id;
+    logic expected_taken;
 
     logic [31:0] instruction_data;
     logic [31:0] instruction_address;
@@ -58,12 +59,22 @@ module branch_regression_tb;
 
     always_comb begin
         case (test_id)
-            0: branch_instruction = encode_b(13'd12, 5'd1, 5'd1, 3'b000); // BEQ
-            1: branch_instruction = encode_b(13'd12, 5'd2, 5'd1, 3'b001); // BNE
-            2: branch_instruction = encode_b(13'd12, 5'd1, 5'd3, 3'b100); // BLT  -1 < 1
-            3: branch_instruction = encode_b(13'd12, 5'd3, 5'd1, 3'b101); // BGE   1 >= -1
-            4: branch_instruction = encode_b(13'd12, 5'd2, 5'd1, 3'b110); // BLTU  1 < 2
-            5: branch_instruction = encode_b(13'd12, 5'd1, 5'd2, 3'b111); // BGEU  2 >= 1
+            0: branch_instruction = encode_b(13'd16, 5'd1, 5'd1, 3'b000); // BEQ
+            1: branch_instruction = encode_b(13'd16, 5'd2, 5'd1, 3'b001); // BNE
+            2: branch_instruction = encode_b(13'd16, 5'd1, 5'd3, 3'b100); // BLT  -1 < 1
+            3: branch_instruction = encode_b(13'd16, 5'd3, 5'd1, 3'b101); // BGE   1 >= -1
+            4: branch_instruction = encode_b(13'd16, 5'd2, 5'd1, 3'b110); // BLTU  1 < 2
+            5: branch_instruction = encode_b(13'd16, 5'd1, 5'd2, 3'b111); // BGEU  2 >= 1
+            6: branch_instruction = encode_b(13'd16, 5'd2, 5'd1, 3'b000); // BEQ false
+            7: branch_instruction = encode_b(13'd16, 5'd1, 5'd1, 3'b001); // BNE false
+            8: branch_instruction = encode_b(13'd16, 5'd3, 5'd1, 3'b100); // BLT 1 < -1 false
+            9: branch_instruction = encode_b(13'd16, 5'd1, 5'd3, 3'b101); // BGE -1 >= 1 false
+            10: branch_instruction = encode_b(13'd16, 5'd1, 5'd3, 3'b110); // BLTU ffffffff < 1 false
+            11: branch_instruction = encode_b(13'd16, 5'd3, 5'd1, 3'b111); // BGEU 1 >= ffffffff false
+            12: branch_instruction = encode_b(13'd16, 5'd3, 5'd3, 3'b100); // BLT equal false
+            13: branch_instruction = encode_b(13'd16, 5'd3, 5'd3, 3'b110); // BLTU equal false
+            14: branch_instruction = encode_b(13'd16, 5'd3, 5'd3, 3'b101); // BGE equal true
+            15: branch_instruction = encode_b(13'd16, 5'd3, 5'd3, 3'b111); // BGEU equal true
             default: branch_instruction = 32'h00000013;
         endcase
     end
@@ -80,7 +91,7 @@ module branch_regression_tb;
 
             32'h18: instruction_data = branch_instruction;
 
-            // Wrong path: NOP until flush exists
+            // This test isolates branch comparisons; flush has separate tests.
             32'h1C: instruction_data = 32'h00000013;
             32'h20: instruction_data = 32'h00000013;
 
@@ -91,26 +102,28 @@ module branch_regression_tb;
     end
 
     initial begin
-        for (int t = 0; t < 6; t++) begin
-            test_id = t;
+        for (int t = 0; t < 16; t++) begin
+            test_id = t[3:0];
+            expected_taken = (t < 6 || t >= 14);
 
             reset = 1;
             repeat (2) @(posedge clk);
+            @(negedge clk);
             reset = 0;
 
             wait (dut.ex_branch_enable === 1'b1);
             #1;
 
-            if (dut.ex_branch_taken !== 1'b1)
-                $fatal(1, "Branch %0d not taken", t);
+            if (dut.ex_branch_taken !== expected_taken)
+                $fatal(1, "Branch %0d: expected taken=%b", t, expected_taken);
 
-            if (dut.pc_next !== 32'h00000024)
+            if (dut.pc_next !== (expected_taken ? 32'h28 : 32'h24))
                 $fatal(1, "Branch %0d wrong target: %h", t, dut.pc_next);
 
             @(posedge clk);
             #1;
 
-            if (instruction_address !== 32'h00000024)
+            if (instruction_address !== (expected_taken ? 32'h28 : 32'h24))
                 $fatal(1, "Branch %0d redirect failed", t);
 
             repeat (2) @(posedge clk);
@@ -120,4 +133,9 @@ module branch_regression_tb;
         $finish;
     end
 
+    // Bound waits so a broken DUT fails instead of hanging.
+    initial begin
+        repeat (10000) @(posedge clk);
+        $fatal(1, "FAIL: simulation timeout");
+    end
 endmodule

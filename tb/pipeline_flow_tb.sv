@@ -41,10 +41,11 @@ module pipeline_flow_tb;
     end
 
     initial begin
-        $dumpfile("pipeline_flow.vcd");
+        $dumpfile("build/waves/pipeline_flow.vcd");
         $dumpvars(0, pipeline_flow_tb);
 
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 0;
 
         repeat (12) @(posedge clk);

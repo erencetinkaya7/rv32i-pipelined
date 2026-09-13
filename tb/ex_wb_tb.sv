@@ -42,11 +42,12 @@ module ex_wb_tb;
     end
 
     initial begin
-        $dumpfile("ex_wb.vcd");
+        $dumpfile("build/waves/ex_wb.vcd");
         $dumpvars(0, ex_wb_tb);
 
         // Reset
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 0;
 
         // Allow ADDI to pass through IF -> ID -> EX -> MEM -> WB

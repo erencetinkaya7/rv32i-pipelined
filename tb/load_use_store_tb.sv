@@ -58,10 +58,11 @@ module load_use_store_tb;
     initial begin
         dmem.memory[0] = 32'd7;
 
-        $dumpfile("load_use_store.vcd");
+        $dumpfile("build/waves/load_use_store.vcd");
         $dumpvars(0, load_use_store_tb);
 
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 1'b0;
 
         repeat (10) @(posedge clk);

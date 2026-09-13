@@ -40,7 +40,7 @@ module memory_tb;
 
     always #5 clk = ~clk;
 
-    // NOP-padded program: hazards are not implemented yet
+    // NOP-padded program isolates memory behavior from hazard handling
     always_comb begin
         case (instruction_address)
             32'h00: instruction_data = 32'h01000093; // addi x1, x0, 16
@@ -62,10 +62,11 @@ module memory_tb;
     end
 
     initial begin
-        $dumpfile("memory.vcd");
+        $dumpfile("build/waves/memory.vcd");
         $dumpvars(0, memory_tb);
 
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 0;
 
         repeat (18) @(posedge clk);

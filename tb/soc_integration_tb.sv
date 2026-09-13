@@ -13,7 +13,7 @@ module soc_integration_tb;
     always #5 clk = ~clk;
 
     rv32i_pipelined_soc #(
-        .IMEM_INIT_FILE("fpga/rv32i/program.hex"),
+        .IMEM_INIT_FILE("build/programs/program.hex"),
         .UART_CLOCK_FREQ(1000),
         .UART_BAUD_RATE (100)
     ) dut (
@@ -43,6 +43,7 @@ module soc_integration_tb;
 
     initial begin
         repeat (3) @(posedge clk);
+        @(negedge clk);
         reset = 1'b0;
 
         expect_next_byte("S"); expect_next_byte("O");

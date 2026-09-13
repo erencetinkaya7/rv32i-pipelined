@@ -1,6 +1,3 @@
-
-
-
 <div align="center">
 
 # RV32I Pipelined Core
@@ -91,32 +88,24 @@ Pipeline registers:
 
 ---
 
-## RTL Structure
+## Repository Structure
 
 ```text
-rtl/
-├── core/
-│   ├── alu.sv
-│   ├── alu_decoder.sv
-│   ├── branch_unit.sv
-│   ├── control_unit.sv
-│   ├── forwarding_unit.sv
-│   ├── hazard_unit.sv
-│   ├── immediate_generator.sv
-│   ├── instruction_fields.sv
-│   ├── register_file.sv
-│   └── rv32i_pipelined_core.sv
-│
-├── pipeline/
-│   ├── if_id_reg.sv
-│   ├── id_ex_reg.sv
-│   ├── ex_mem_reg.sv
-│   └── mem_wb_reg.sv
-│
-└── memory/
-    ├── instruction_memory.sv
-    └── data_memory.sv
+rtl/                 CPU, pipeline registers, memories and SoC peripherals
+programs/            RISC-V assembly sources (all demos)
+tb/                  Small self-checking SystemVerilog tests
+fpga/tangnano9k/      Board top and pin constraints only
+scripts/             Binary-to-HEX converter and UART monitor
+build/               Generated files only; ignored by Git
+  programs/          ELF, BIN and the selected program.hex image
+  sim/               Compiled simulations
+  waves/             VCD waveforms
+  logs/              Test output and errors
+  fpga/              Synthesis/P&R JSON and the .fs bitstream
+Makefile             All build, test and programming commands
+README.md            Architecture and usage
 ```
+
 
 ---
 
@@ -131,11 +120,11 @@ The processor is verified using self-checking SystemVerilog testbenches.
 | Pipeline | Stage flow and EX→WB execution |
 | Hazards | RAW forwarding, WB-to-ID bypass, load-use stall, and control-flow flush |
 | Control flow | Taken branches, JAL, JALR, and not-taken branch sequencing |
-| Regression | Full supported-instruction suite |
+| Regression | 34 directed testbenches; latest result 34/34 PASS |
 
 Pipeline timing and stage alignment were also inspected using GTKWave.
 
-The repository is used from **WSL (Ubuntu)**. From the repository root:
+The repository is used from **native Linux**. From the repository root:
 
 ```bash
 make lint
@@ -193,7 +182,16 @@ nextpnr Place & Route
 Gowin Bitstream
 ```
 
-Baseline `v0.1` result:
+Current integrated SoC (native Linux, 13 September 2026):
+
+| Metric | Result |
+| --- | ---: |
+| Target clock | 27 MHz |
+| Post-route maximum frequency | 42.02 MHz — PASS |
+| LUT4 / DFF / BSRAM | 3351 / 802 / 2 |
+| Board validation | UART, LEDs, direction change and reset confirmed |
+
+Historical baseline `v0.1` result:
 
 | Metric            |             Result |
 | ----------------- | -----------------: |
@@ -212,7 +210,7 @@ Hazard-handled checkpoint result:
 
 ### NOP-free hazard demo
 
-[`hazard_demo.S`](fpga/rv32i/hazard_demo.S) is a compact end-to-end program
+[`hazard_demo.S`](programs/hazard_demo.S) is a compact end-to-end program
 used for both simulation and FPGA validation. It exercises a store/load pair,
 load-use dependency, forwarding through a loop, a taken branch, `JAL`, and
 `JALR` return, without inserting software NOPs.
@@ -226,83 +224,27 @@ Expected final state:
 | `t3` | 0 |
 | `a0` | 19 |
 
-The board exposes `a0[5:0]` on active-low LEDs. The FPGA demonstration showed
-the expected three illuminated LEDs for final value `a0 = 19`.
+The earlier core-only board top displayed `a0 = 19` on the LEDs. The current
+SoC top displays GPIO instead; `make test-hazard_demo` checks this program
+in simulation.
 
-From the repository root, build and load the default GPIO demo
-(`programs/gpio_demo.S`) with:
+## Quick Start
 
-```bash
-make flash
-```
-
-Select another core-only assembly program with:
+Run from the repository root on native Linux:
 
 ```bash
-make PROGRAM=hazard_demo.S flash
-```
-
-Named shortcuts keep program selection explicit:
-
-```bash
-make flash-gpio
-make flash-hazard
-make flash-nested
-make flash-uart
-make flash-timer
-make flash-button
+make help
+make test
 make flash-integration
-```
-
-`make flash` deliberately retains `programs/gpio_demo.S` as its default.
-Use a named shortcut or `make flash PROGRAM=programs/<name>.S` whenever the
-program matters; the flash command prints the selected program before it
-builds.
-
-### UART on real hardware
-
-The Tang Nano JTAG and USB serial functions share the FTDI connection under
-WSL. Stop any running monitor before programming, release the serial driver,
-flash, then restore the driver and monitor the UART:
-
-```bash
-sudo modprobe -r ftdi_sio
-make flash-uart
-sudo modprobe ftdi_sio
 make uart-monitor
 ```
 
-The monitor uses `/dev/ttyUSB1` at 115200 baud by default and prints
-`RV32I UART OK!` for the UART smoke test. It intentionally uses Ubuntu's
-`/usr/bin/python3`, because OSS CAD Suite's bundled Python does not include
-`pyserial`. Override the detected port when needed:
+After opening the monitor, press the design reset button for `SOC READY`.
+The user button reverses the LED chaser and emits `L` or `R`.
+`make flash` alone selects the GPIO demo.
 
-```bash
-make uart-monitor UART_PORT=/dev/ttyUSB1
-```
-
-For the combined demonstration, use `make flash-integration`, start the
-monitor, then press the board reset button. The expected boot message is
-`SOC READY`; the user button emits `L` or `R` as it reverses the chaser.
-
-Remove generated simulation, waveform, and FPGA outputs:
-
-```bash
-make clean
-```
-
-The VS Code tasks mirror these commands: **RTL: Full regression (WSL)**,
-**RTL: Lint (WSL)**, **FPGA: Flash default program (WSL)**,
-**FPGA: Flash hazard demo (WSL)**, and **Wave: Open RAW hazard VCD (WSL)**.
-
-For FPGA programming, the board must first be attached to WSL after each USB
-reconnect. Then `make flash` builds the assembly image, synthesizes the FPGA,
-and loads the resulting bitstream into SRAM. This configuration is volatile:
-unplugging or resetting the board clears it.
-
-`fpga/rv32i/programs/nested_func.S` is an earlier core-only program retained
-as a second hardware example. It uses stack RAM and nested `JAL`/`JALR` calls,
-then leaves `a0 = 11`.
+See [USAGE.md](USAGE.md) for software builds, focused tests, waveforms,
+adding testbenches, tool configuration and cleanup.
 
 ---
 
@@ -314,6 +256,10 @@ Not yet implemented:
 * Exceptions and traps
 * Interrupts
 * Cache hierarchy
+* UART RX
+
+The GPIO user-button input still needs synchronization/debounce. Directed
+tests do not establish exhaustive ISA coverage or metastability safety.
 
 ---
 
@@ -332,6 +278,8 @@ Not yet implemented:
 * [x] Branch / jump pipeline flush
 * [x] NOP-free program execution in simulation and on Tang Nano 9K
 * [x] Hazard-handled FPGA synthesis, place-and-route, and timing check
+* [x] GPIO, UART TX and timer SoC integration
+* [x] Native Linux build, regression and integrated FPGA demo
 
 ---
 

@@ -46,7 +46,7 @@ module if_stage_tb;
 
     initial begin
         // Waveform dump
-        $dumpfile("if_stage.vcd");
+        $dumpfile("build/waves/if_stage.vcd");
         $dumpvars(0, if_stage_tb);
 
         clk    = 0;
@@ -78,7 +78,7 @@ module if_stage_tb;
         if (errors == 0)
             $display("IF STAGE PASS");
         else
-            $display("IF STAGE FAIL: %0d errors", errors);
+            $fatal(1, "IF STAGE FAIL: %0d errors", errors);
 
         $finish;
     end

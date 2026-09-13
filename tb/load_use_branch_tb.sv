@@ -45,10 +45,11 @@ module load_use_branch_tb;
     end
 
     initial begin
-        $dumpfile("load_use_branch.vcd");
+        $dumpfile("build/waves/load_use_branch.vcd");
         $dumpvars(0, load_use_branch_tb);
 
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 1'b0;
 
         wait (dut.ex_branch_enable === 1'b1);
@@ -64,4 +65,9 @@ module load_use_branch_tb;
         $finish;
     end
 
+    // Bound waits so a broken DUT fails instead of hanging.
+    initial begin
+        repeat (10000) @(posedge clk);
+        $fatal(1, "FAIL: simulation timeout");
+    end
 endmodule

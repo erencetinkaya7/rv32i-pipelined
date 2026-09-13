@@ -39,10 +39,11 @@ module jal_forwarding_tb;
     end
 
     initial begin
-        $dumpfile("jal_forwarding.vcd");
+        $dumpfile("build/waves/jal_forwarding.vcd");
         $dumpvars(0, jal_forwarding_tb);
 
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 1'b0;
 
         // A bubble keeps old datapath fields, so require an active register write
@@ -60,4 +61,9 @@ module jal_forwarding_tb;
         $finish;
     end
 
+    // Bound waits so a broken DUT fails instead of hanging.
+    initial begin
+        repeat (10000) @(posedge clk);
+        $fatal(1, "FAIL: simulation timeout");
+    end
 endmodule

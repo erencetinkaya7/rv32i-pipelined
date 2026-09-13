@@ -1,95 +1,74 @@
+# Native Linux tools; override OSS_CAD_DIR if installed elsewhere.
+.DEFAULT_GOAL := core
+OSS_CAD_DIR ?= $(HOME)/oss-cad-suite
+export PATH := $(OSS_CAD_DIR)/bin:$(PATH)
+PYTHON ?= /usr/bin/python3
 RTL := rtl/core/*.sv rtl/pipeline/*.sv rtl/memory/*.sv rtl/peripherals/*.sv rtl/soc/*.sv
 BUILD := build
 LOG_DIR := $(BUILD)/logs
 WAVE_DIR := $(BUILD)/waves
-FPGA_DIR := fpga/rv32i
 PROGRAM ?= programs/gpio_demo.S
+SIM_DIR := $(BUILD)/sim
+FPGA_DIR := fpga/tangnano9k
+FPGA_BUILD := $(BUILD)/fpga
+PROGRAM_BUILD := $(BUILD)/programs
+TIMER_TICKS ?= 13500000
+PROGRAM_ELF := $(PROGRAM_BUILD)/$(notdir $(PROGRAM:.S=.elf))
+PROGRAM_BIN := $(PROGRAM_BUILD)/$(notdir $(PROGRAM:.S=.bin))
+PROGRAM_HEX := $(PROGRAM_BUILD)/program.hex
 UART_PORT ?= /dev/ttyUSB1
 UART_BAUD ?= 115200
-TESTS := arithmetic_regression branch_flush branch_forwarding branch_not_taken \
-	branch_regression branch ex_wb hazard_demo id_stage if_stage jal_flush \
-	jal_forwarding jalr_flush jalr_forwarding jalr jump load_use_branch \
-	load_use_hazard load_use_jalr load_use_stall load_use_store memory \
-	pipeline_flow raw_hazard soc_gpio soc_uart subword_memory u_type
+UART_SECONDS ?= 0
+TEST_TIMEOUT ?= 30s
+TEST ?= raw_hazard
 
-TESTS += timer soc_timer timer_led_chaser soc_button soc_integration
+# Small tests remain individually runnable; groups explain their purpose.
+STAGE_TESTS := if_stage id_stage ex_wb pipeline_flow
+ISA_TESTS := arithmetic_regression branch_regression branch branch_not_taken \
+	jump jalr u_type memory subword_memory
+HAZARD_TESTS := raw_hazard load_use_hazard load_use_stall load_use_store \
+	load_use_branch load_use_jalr branch_forwarding jal_forwarding jalr_forwarding \
+	branch_flush jal_flush jalr_flush hazard_demo
+SOC_TESTS := timer soc_gpio soc_uart soc_timer timer_led_chaser soc_button soc_integration soc_flush
+TESTS := $(STAGE_TESTS) $(ISA_TESTS) $(HAZARD_TESTS) $(SOC_TESTS)
 
-.PHONY: core test fpga flash flash-gpio flash-hazard flash-nested flash-uart flash-timer flash-button flash-integration uart-monitor clean
-$(BUILD):
-	mkdir -p $(BUILD)
+# Assembly tests share program.hex, so keep builds and simulations sequential.
+.NOTPARALLEL:
+.PHONY: core test test-stages test-isa test-hazards test-soc lint fpga flash \
+	flash-gpio flash-hazard flash-nested flash-uart flash-timer flash-button \
+	flash-integration uart-monitor uart-ports wave program clean help FORCE
 
-core: $(BUILD)
-	iverilog -g2012 -s rv32i_pipelined_core \
-	-o $(BUILD)/pipeline_sim $(RTL)
+core:
+	@mkdir -p $(SIM_DIR)
+	iverilog -g2012 -s rv32i_pipelined_core -o $(SIM_DIR)/pipeline_sim $(RTL)
 
-# The stem maps directly to both tb/<stem>_tb.sv and module <stem>_tb.
-test-%: $(BUILD)
-	@mkdir -p $(LOG_DIR)
+# Only these tests need an assembled program. Each uses the common recipe below.
+test-hazard_demo: TEST_PROGRAM = programs/hazard_demo.S
+test-soc_gpio: TEST_PROGRAM = programs/gpio_demo.S
+test-soc_uart: TEST_PROGRAM = programs/uart_putc_demo.S
+test-soc_timer: TEST_PROGRAM = programs/timer_demo.S
+test-timer_led_chaser: TEST_PROGRAM = programs/timer_led_chaser.S
+test-soc_button: TEST_PROGRAM = programs/button_demo.S
+test-soc_integration: TEST_PROGRAM = programs/soc_integration_demo.S
+
+test-%: tb/%_tb.sv
+	@mkdir -p $(SIM_DIR) $(LOG_DIR) $(WAVE_DIR)
 	@echo "==> $*_tb"
-	@iverilog -g2012 -s $*_tb -o $(BUILD)/$*_tb_sim $(RTL) tb/$*_tb.sv > $(LOG_DIR)/$*_tb.log 2>&1 || { cat $(LOG_DIR)/$*_tb.log; exit 1; }
-	@vvp $(BUILD)/$*_tb_sim >> $(LOG_DIR)/$*_tb.log 2>&1 || { cat $(LOG_DIR)/$*_tb.log; exit 1; }
-	@grep -E "PASS|FAIL" $(LOG_DIR)/$*_tb.log || echo "PASS $*_tb"
+	@: > $(LOG_DIR)/$*_tb.log
+	@if [ -n "$(TEST_PROGRAM)" ]; then \
+		$(MAKE) PROGRAM=$(TEST_PROGRAM) TIMER_TICKS=8 program >> $(LOG_DIR)/$*_tb.log 2>&1 || { cat $(LOG_DIR)/$*_tb.log; exit 1; }; \
+	fi
+	@iverilog -g2012 -s $*_tb -o $(SIM_DIR)/$*_tb_sim $(RTL) $< >> $(LOG_DIR)/$*_tb.log 2>&1 || { cat $(LOG_DIR)/$*_tb.log; exit 1; }
+	@timeout $(TEST_TIMEOUT) vvp $(SIM_DIR)/$*_tb_sim >> $(LOG_DIR)/$*_tb.log 2>&1 || { cat $(LOG_DIR)/$*_tb.log; echo "FAIL: $*_tb (simulation error or timeout)"; exit 1; }
+	@if grep -Eq 'FAIL|ERROR:|FATAL:' $(LOG_DIR)/$*_tb.log; then cat $(LOG_DIR)/$*_tb.log; exit 1; fi
+	@grep 'PASS' $(LOG_DIR)/$*_tb.log || { cat $(LOG_DIR)/$*_tb.log; echo "FAIL: no PASS result from $*_tb"; exit 1; }
 
-# The integration test needs its assembly image regenerated before simulation.
-test-hazard_demo: $(BUILD)
-	@mkdir -p $(LOG_DIR)
-	@echo "==> hazard_demo_tb"
-	@$(MAKE) -C $(FPGA_DIR) PROGRAM=hazard_demo.S program.hex > $(LOG_DIR)/hazard_demo_tb.log 2>&1 || { cat $(LOG_DIR)/hazard_demo_tb.log; exit 1; }
-	@iverilog -g2012 -s hazard_demo_tb -o $(BUILD)/hazard_demo_tb_sim $(RTL) tb/hazard_demo_tb.sv >> $(LOG_DIR)/hazard_demo_tb.log 2>&1 || { cat $(LOG_DIR)/hazard_demo_tb.log; exit 1; }
-	@vvp $(BUILD)/hazard_demo_tb_sim >> $(LOG_DIR)/hazard_demo_tb.log 2>&1 || { cat $(LOG_DIR)/hazard_demo_tb.log; exit 1; }
-	@grep -E "PASS|FAIL" $(LOG_DIR)/hazard_demo_tb.log || echo "PASS hazard_demo_tb"
+test-stages: TESTS = $(STAGE_TESTS)
+test-isa: TESTS = $(ISA_TESTS)
+test-hazards: TESTS = $(HAZARD_TESTS)
+test-soc: TESTS = $(SOC_TESTS)
 
-# The GPIO integration test needs its selected assembly image before simulation.
-test-soc_gpio: $(BUILD)
-	@mkdir -p $(LOG_DIR)
-	@echo "==> soc_gpio_tb"
-	@$(MAKE) -C $(FPGA_DIR) PROGRAM=programs/gpio_demo.S program.hex > $(LOG_DIR)/soc_gpio_tb.log 2>&1 || { cat $(LOG_DIR)/soc_gpio_tb.log; exit 1; }
-	@iverilog -g2012 -s soc_gpio_tb -o $(BUILD)/soc_gpio_tb_sim $(RTL) tb/soc_gpio_tb.sv >> $(LOG_DIR)/soc_gpio_tb.log 2>&1 || { cat $(LOG_DIR)/soc_gpio_tb.log; exit 1; }
-	@vvp $(BUILD)/soc_gpio_tb_sim >> $(LOG_DIR)/soc_gpio_tb.log 2>&1 || { cat $(LOG_DIR)/soc_gpio_tb.log; exit 1; }
-	@grep -E "PASS|FAIL" $(LOG_DIR)/soc_gpio_tb.log || echo "PASS soc_gpio_tb"
-
-test-soc_uart: $(BUILD)
-	@mkdir -p $(LOG_DIR)
-	@echo "==> soc_uart_tb"
-	@$(MAKE) -C $(FPGA_DIR) PROGRAM=programs/uart_putc_demo.S program.hex > $(LOG_DIR)/soc_uart_tb.log 2>&1 || { cat $(LOG_DIR)/soc_uart_tb.log; exit 1; }
-	@iverilog -g2012 -s soc_uart_tb -o $(BUILD)/soc_uart_tb_sim $(RTL) tb/soc_uart_tb.sv >> $(LOG_DIR)/soc_uart_tb.log 2>&1 || { cat $(LOG_DIR)/soc_uart_tb.log; exit 1; }
-	@vvp $(BUILD)/soc_uart_tb_sim >> $(LOG_DIR)/soc_uart_tb.log 2>&1 || { cat $(LOG_DIR)/soc_uart_tb.log; exit 1; }
-	@grep -E "PASS|FAIL" $(LOG_DIR)/soc_uart_tb.log || echo "PASS soc_uart_tb"
-
-# The timer integration test builds its polling assembly image first.
-test-soc_timer: $(BUILD)
-	@mkdir -p $(LOG_DIR)
-	@echo "==> soc_timer_tb"
-	@$(MAKE) -C $(FPGA_DIR) PROGRAM=programs/timer_demo.S program.hex > $(LOG_DIR)/soc_timer_tb.log 2>&1 || { cat $(LOG_DIR)/soc_timer_tb.log; exit 1; }
-	@iverilog -g2012 -s soc_timer_tb -o $(BUILD)/soc_timer_tb_sim $(RTL) tb/soc_timer_tb.sv >> $(LOG_DIR)/soc_timer_tb.log 2>&1 || { cat $(LOG_DIR)/soc_timer_tb.log; exit 1; }
-	@vvp $(BUILD)/soc_timer_tb_sim >> $(LOG_DIR)/soc_timer_tb.log 2>&1 || { cat $(LOG_DIR)/soc_timer_tb.log; exit 1; }
-	@grep -E "PASS|FAIL" $(LOG_DIR)/soc_timer_tb.log || echo "PASS soc_timer_tb"
-
-test-timer_led_chaser: $(BUILD)
-	@mkdir -p $(LOG_DIR)
-	@echo "==> timer_led_chaser_tb"
-	@$(MAKE) -C $(FPGA_DIR) PROGRAM=programs/timer_led_chaser.S TIMER_TICKS=8 program.hex > $(LOG_DIR)/timer_led_chaser_tb.log 2>&1 || { cat $(LOG_DIR)/timer_led_chaser_tb.log; exit 1; }
-	@iverilog -g2012 -s timer_led_chaser_tb -o $(BUILD)/timer_led_chaser_tb_sim $(RTL) tb/timer_led_chaser_tb.sv >> $(LOG_DIR)/timer_led_chaser_tb.log 2>&1 || { cat $(LOG_DIR)/timer_led_chaser_tb.log; exit 1; }
-	@vvp $(BUILD)/timer_led_chaser_tb_sim >> $(LOG_DIR)/timer_led_chaser_tb.log 2>&1 || { cat $(LOG_DIR)/timer_led_chaser_tb.log; exit 1; }
-	@grep -E "PASS|FAIL" $(LOG_DIR)/timer_led_chaser_tb.log || echo "PASS timer_led_chaser_tb"
-
-test-soc_button: $(BUILD)
-	@mkdir -p $(LOG_DIR)
-	@echo "==> soc_button_tb"
-	@$(MAKE) -C $(FPGA_DIR) PROGRAM=programs/button_demo.S program.hex > $(LOG_DIR)/soc_button_tb.log 2>&1 || { cat $(LOG_DIR)/soc_button_tb.log; exit 1; }
-	@iverilog -g2012 -s soc_button_tb -o $(BUILD)/soc_button_tb_sim $(RTL) tb/soc_button_tb.sv >> $(LOG_DIR)/soc_button_tb.log 2>&1 || { cat $(LOG_DIR)/soc_button_tb.log; exit 1; }
-	@vvp $(BUILD)/soc_button_tb_sim >> $(LOG_DIR)/soc_button_tb.log 2>&1 || { cat $(LOG_DIR)/soc_button_tb.log; exit 1; }
-	@grep -E "PASS|FAIL" $(LOG_DIR)/soc_button_tb.log || echo "PASS soc_button_tb"
-
-test-soc_integration: $(BUILD)
-	@mkdir -p $(LOG_DIR)
-	@echo "==> soc_integration_tb"
-	@$(MAKE) -C $(FPGA_DIR) PROGRAM=programs/soc_integration_demo.S TIMER_TICKS=8 program.hex > $(LOG_DIR)/soc_integration_tb.log 2>&1 || { cat $(LOG_DIR)/soc_integration_tb.log; exit 1; }
-	@iverilog -g2012 -s soc_integration_tb -o $(BUILD)/soc_integration_tb_sim $(RTL) tb/soc_integration_tb.sv >> $(LOG_DIR)/soc_integration_tb.log 2>&1 || { cat $(LOG_DIR)/soc_integration_tb.log; exit 1; }
-	@vvp $(BUILD)/soc_integration_tb_sim >> $(LOG_DIR)/soc_integration_tb.log 2>&1 || { cat $(LOG_DIR)/soc_integration_tb.log; exit 1; }
-	@grep -E "PASS|FAIL" $(LOG_DIR)/soc_integration_tb.log || echo "PASS soc_integration_tb"
-
-test:
+test test-stages test-isa test-hazards test-soc:
 	@passed=0; failed=0; \
 	for test_name in $(TESTS); do \
 		if $(MAKE) --no-print-directory test-$$test_name; then \
@@ -98,33 +77,53 @@ test:
 			failed=$$((failed + 1)); \
 		fi; \
 	done; \
-	echo "========================================"; \
 	echo "REGRESSION: PASS $$passed/$(words $(TESTS)), FAIL $$failed/$(words $(TESTS))"; \
-	echo "========================================"; \
 	test $$failed -eq 0
-	@mkdir -p $(WAVE_DIR)
-	@find . -maxdepth 1 -type f -name '*.vcd' -exec mv -f {} $(WAVE_DIR) \;
 
 lint:
-	verilator --lint-only -Wall -Wno-fatal \
-		--top-module rv32i_pipelined_soc $(RTL)
+	verilator --lint-only -Wall -Wno-fatal --top-module rv32i_pipelined_soc $(RTL)
 
-# Build or program the Tang Nano 9K using the core-only default program.
-# Override with: make PROGRAM=programs/<name>.S flash
-fpga:
-	@echo "==> FPGA program: $(PROGRAM)"
-	$(MAKE) -C $(FPGA_DIR) PROGRAM=$(PROGRAM)
+wave: test-$(TEST)
+	@test -f $(WAVE_DIR)/$(TEST).vcd || { echo "No waveform: add a dump to tb/$(TEST)_tb.sv first."; exit 1; }
+	gtkwave $(WAVE_DIR)/$(TEST).vcd
 
-flash:
-	@echo "==> FPGA program: $(PROGRAM)"
-	$(MAKE) -C $(FPGA_DIR) PROGRAM=$(PROGRAM) flash
+# Assembly is selected explicitly on each invocation; no selection state file.
+program: $(PROGRAM_HEX)
+
+$(PROGRAM_ELF): FORCE $(PROGRAM)
+	@mkdir -p $(PROGRAM_BUILD)
+	riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -DTIMER_TICKS=$(TIMER_TICKS) -Ttext=0x0 -o $@ $(PROGRAM)
+
+$(PROGRAM_BIN): $(PROGRAM_ELF)
+	riscv64-unknown-elf-objcopy -O binary $< $@
+
+$(PROGRAM_HEX): $(PROGRAM_BIN) scripts/bin_to_hex.py
+	$(PYTHON) scripts/bin_to_hex.py $(PROGRAM_BIN) $@
+
+$(FPGA_BUILD)/rv32i.json: $(wildcard $(RTL)) $(FPGA_DIR)/top.sv $(PROGRAM_HEX)
+	@mkdir -p $(FPGA_BUILD)
+	yosys -p "read_verilog -sv $(RTL) $(FPGA_DIR)/top.sv; synth_gowin -top top -json $@"
+
+$(FPGA_BUILD)/rv32i_pnr.json: $(FPGA_BUILD)/rv32i.json $(FPGA_DIR)/tangnano9k.cst
+	nextpnr-himbaechel --json $< --write $@ \
+		--device GW1NR-LV9QN88PC6/I5 --freq 27 --seed 30 \
+		--vopt family=GW1N-9C --vopt cst=$(FPGA_DIR)/tangnano9k.cst
+
+$(FPGA_BUILD)/rv32i.fs: $(FPGA_BUILD)/rv32i_pnr.json
+	gowin_pack -d GW1N-9C -o $@ $<
+
+fpga: $(FPGA_BUILD)/rv32i.fs
+	@echo "FPGA image ready: $< (program: $(PROGRAM))"
+
+flash: fpga
+	openFPGALoader -b tangnano9k $(FPGA_BUILD)/rv32i.fs
 
 # Named FPGA demos keep program selection explicit without long commands.
 flash-gpio:
 	$(MAKE) flash PROGRAM=programs/gpio_demo.S
 
 flash-hazard:
-	$(MAKE) flash PROGRAM=hazard_demo.S
+	$(MAKE) flash PROGRAM=programs/hazard_demo.S
 
 flash-nested:
 	$(MAKE) flash PROGRAM=programs/nested_func.S
@@ -141,15 +140,29 @@ flash-button:
 flash-integration:
 	$(MAKE) flash PROGRAM=programs/soc_integration_demo.S
 
-# Uses Ubuntu's Python: the OSS CAD Suite Python intentionally has no pyserial.
+# Use system Python for the installed pyserial package.
+uart-ports:
+	$(PYTHON) -m serial.tools.list_ports -v
+
 uart-monitor:
-	/usr/bin/python3 scripts/uart_monitor.py --port $(UART_PORT) --baud $(UART_BAUD)
+	$(PYTHON) scripts/uart_monitor.py --port $(UART_PORT) --baud $(UART_BAUD) --seconds $(UART_SECONDS)
 
 clean:
-	# Remove only generated simulation, waveform, and FPGA outputs.
-	rm -f $(BUILD)/*_sim
-	rm -f $(BUILD)/*.log
-	rm -rf $(BUILD)/windows-regression
-	rm -rf $(LOG_DIR)
-	rm -rf $(WAVE_DIR)
-	$(MAKE) -C $(FPGA_DIR) clean
+	# All generated files live here; source directories are untouched.
+	rm -rf build/
+
+help:
+	@echo "Run from the repository root:"
+	@echo "  make lint                 Check RTL warnings/errors"
+	@echo "  make test                 Run all 34 testbenches"
+	@echo "  make test-load_use_stall  Run one testbench"
+	@echo "  make wave TEST=load_use_stall  Run a test and open its waveform"
+	@echo "  make program PROGRAM=programs/example.S  Build software only"
+	@echo "  make fpga PROGRAM=programs/example.S     Build FPGA image"
+	@echo "  make flash PROGRAM=programs/example.S    Build and load SRAM"
+	@echo "  make flash-integration    Run the integrated board demo"
+	@echo "  make uart-monitor         Listen to UART (Ctrl+C closes)"
+	@echo "  make uart-ports           List available serial ports"
+	@echo "  make clean                Delete ALL build/ outputs, including FPGA images"
+	@echo "Without TEST, wave selects raw_hazard. See USAGE.md for details."
+	@echo "Without PROGRAM, program/fpga/flash select programs/gpio_demo.S."

@@ -2,6 +2,7 @@
 """Read the board UART with one reader and bounded optional capture."""
 import argparse
 import time
+import sys
 import serial
 
 parser = argparse.ArgumentParser()
@@ -9,6 +10,8 @@ parser.add_argument('--port', default='/dev/ttyUSB1')
 parser.add_argument('--baud', type=int, default=115200)
 parser.add_argument('--seconds', type=float, default=0)
 args = parser.parse_args()
+if args.seconds < 0:
+    parser.error("--seconds must be zero or positive")
 try:
     with serial.Serial(args.port, args.baud, timeout=0.2, exclusive=True,
                        xonxoff=False, rtscts=False, dsrdtr=False) as port:
@@ -23,3 +26,6 @@ try:
         print(f'\nCaptured {count} bytes.', flush=True)
 except KeyboardInterrupt:
     print('\nUART closed.')
+
+except serial.SerialException as error:
+    sys.exit(f"UART error: {error}\nCheck UART_PORT, close other monitors, and check dialout permissions.")

@@ -13,7 +13,7 @@ module soc_uart_tb;
     always #5 clk = ~clk;
 
     rv32i_pipelined_soc #(
-        .IMEM_INIT_FILE ("fpga/rv32i/program.hex"),
+        .IMEM_INIT_FILE ("build/programs/program.hex"),
         .UART_CLOCK_FREQ(1000),
         .UART_BAUD_RATE (100)
     ) dut (
@@ -48,6 +48,7 @@ module soc_uart_tb;
 
     initial begin
         repeat (3) @(posedge clk);
+        @(negedge clk);
         reset = 1'b0;
 
         // Each call waits for the next start bit and checks its 8N1 frame.
@@ -70,5 +71,10 @@ module soc_uart_tb;
 
         $display("PASS: MMIO UART transmitted one-time message");
         $finish;
+    end
+    // Bound waits so a broken DUT fails instead of hanging.
+    initial begin
+        repeat (10000) @(posedge clk);
+        $fatal(1, "FAIL: simulation timeout");
     end
 endmodule

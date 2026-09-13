@@ -13,7 +13,7 @@ module timer_led_chaser_tb;
     always #5 clk = ~clk;
 
     rv32i_pipelined_soc #(
-        .IMEM_INIT_FILE("fpga/rv32i/program.hex")
+        .IMEM_INIT_FILE("build/programs/program.hex")
     ) dut (
         .clk      (clk),
         .reset    (reset),
@@ -24,6 +24,7 @@ module timer_led_chaser_tb;
 
     initial begin
         repeat (3) @(posedge clk);
+        @(negedge clk);
         reset = 1'b0;
 
         repeat (400) begin

@@ -39,7 +39,7 @@ module subword_memory_tb;
 
     always #5 clk = ~clk;
 
-    // NOP-padded program: hazards are not implemented yet
+    // NOP-padded program isolates memory behavior from hazard handling
     always_comb begin
         case (instruction_address)
 
@@ -68,13 +68,14 @@ module subword_memory_tb;
     end
 
     initial begin
-        $dumpfile("subword_memory.vcd");
+        $dumpfile("build/waves/subword_memory.vcd");
         $dumpvars(0, subword_memory_tb);
 
         // Initial word at address 16
         dmem.memory[4] = 32'h8001_8080;
 
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 0;
 
         repeat (24) @(posedge clk);

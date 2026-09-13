@@ -1,26 +1,10 @@
-# FPGA build outputs
-fpga/**/*.elf
-fpga/**/*.bin
-fpga/**/*.hex
-fpga/**/*.json
-fpga/**/*.fs
-fpga/**/.selected-program
+# All generated ELF/BIN/HEX, simulations, waveforms, logs and FPGA outputs.
+/build/
 
+# Python cache files.
+__pycache__/
+*.pyc
 
-# Simulation outputs
-*_sim
-*.vcd
-compile.log
-
-# RISC-V build outputs
-sw/*.elf
-sw/*.bin
-sw/*.hex
-sw/*.o
-
-# Build directories
-build/
-
-# Editor / OS junk
+# Editor / OS temporary files.
 .DS_Store
 *~

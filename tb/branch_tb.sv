@@ -45,10 +45,11 @@ module branch_tb;
     end
 
     initial begin
-        $dumpfile("branch.vcd");
+        $dumpfile("build/waves/branch.vcd");
         $dumpvars(0, branch_tb);
 
         repeat (2) @(posedge clk);
+        @(negedge clk);
         reset = 0;
 
         repeat (12) @(posedge clk);
