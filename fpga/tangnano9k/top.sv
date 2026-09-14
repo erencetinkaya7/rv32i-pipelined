@@ -2,6 +2,7 @@ module top (
     input  logic       clk,
     input  logic       btn,
     input  logic       reset_btn,
+    input  logic       uart_rx,
 
     output logic [5:0] led,
     output logic       uart_tx
@@ -39,6 +40,7 @@ module top (
         .clk      (clk),
         .reset    (reset),
         .btn      (btn),
+        .uart_rx  (uart_rx),
         .debug_a0 (debug_a0),
         .gpio_out (gpio_out),
         .uart_tx  (uart_tx)

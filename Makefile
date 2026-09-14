@@ -29,12 +29,13 @@ ISA_TESTS := arithmetic_regression branch_regression branch branch_not_taken \
 HAZARD_TESTS := raw_hazard load_use_hazard load_use_stall load_use_store \
 	load_use_branch load_use_jalr branch_forwarding jal_forwarding jalr_forwarding \
 	branch_flush jal_flush jalr_flush hazard_demo
-SOC_TESTS := timer soc_gpio soc_uart soc_timer timer_led_chaser soc_button soc_integration soc_flush
-TESTS := $(STAGE_TESTS) $(ISA_TESTS) $(HAZARD_TESTS) $(SOC_TESTS)
+PERIPHERAL_TESTS := timer uart_rx
+SOC_TESTS := soc_gpio soc_uart soc_uart_rx soc_uart_echo soc_timer timer_led_chaser soc_button soc_integration soc_flush
+TESTS := $(STAGE_TESTS) $(ISA_TESTS) $(HAZARD_TESTS) $(PERIPHERAL_TESTS) $(SOC_TESTS)
 
 # Assembly tests share program.hex, so keep builds and simulations sequential.
 .NOTPARALLEL:
-.PHONY: core test test-stages test-isa test-hazards test-soc lint fpga flash \
+.PHONY: core test test-stages test-isa test-hazards test-peripherals test-soc lint fpga flash \
 	flash-gpio flash-hazard flash-nested flash-uart flash-timer flash-button \
 	flash-integration uart-monitor uart-ports wave program clean help FORCE
 
@@ -46,6 +47,8 @@ core:
 test-hazard_demo: TEST_PROGRAM = programs/hazard_demo.S
 test-soc_gpio: TEST_PROGRAM = programs/gpio_demo.S
 test-soc_uart: TEST_PROGRAM = programs/uart_putc_demo.S
+test-soc_uart_rx: TEST_PROGRAM = programs/uart_rx_gpio_demo.S
+test-soc_uart_echo: TEST_PROGRAM = programs/uart_echo_demo.S
 test-soc_timer: TEST_PROGRAM = programs/timer_demo.S
 test-timer_led_chaser: TEST_PROGRAM = programs/timer_led_chaser.S
 test-soc_button: TEST_PROGRAM = programs/button_demo.S
@@ -66,9 +69,10 @@ test-%: tb/%_tb.sv
 test-stages: TESTS = $(STAGE_TESTS)
 test-isa: TESTS = $(ISA_TESTS)
 test-hazards: TESTS = $(HAZARD_TESTS)
+test-peripherals: TESTS = $(PERIPHERAL_TESTS)
 test-soc: TESTS = $(SOC_TESTS)
 
-test test-stages test-isa test-hazards test-soc:
+test test-stages test-isa test-hazards test-peripherals test-soc:
 	@passed=0; failed=0; \
 	for test_name in $(TESTS); do \
 		if $(MAKE) --no-print-directory test-$$test_name; then \
@@ -154,7 +158,7 @@ clean:
 help:
 	@echo "Run from the repository root:"
 	@echo "  make lint                 Check RTL warnings/errors"
-	@echo "  make test                 Run all 34 testbenches"
+	@echo "  make test                 Run all testbenches"
 	@echo "  make test-load_use_stall  Run one testbench"
 	@echo "  make wave TEST=load_use_stall  Run a test and open its waveform"
 	@echo "  make program PROGRAM=programs/example.S  Build software only"

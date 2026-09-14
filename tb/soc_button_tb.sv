@@ -32,12 +32,25 @@ module soc_button_tb;
         if (gpio_out !== 32'b0)
             $fatal(1, "FAIL: GPIO changed before button press");
 
+        // Drive between clock edges. The first stage changes first; the second
+        // stage still holds the released value until the following clock edge.
+        @(negedge clk);
         btn = 1'b0;
+        @(posedge clk);
+        #1;
+        if (dut.gpio_periph.btn_meta !== 1'b0 || dut.gpio_periph.btn_sync !== 1'b1)
+            $fatal(1, "FAIL: GPIO synchronizer first stage is incorrect");
+
+        @(posedge clk);
+        #1;
+        if (dut.gpio_periph.btn_sync !== 1'b0)
+            $fatal(1, "FAIL: synchronized button did not become pressed");
+
         repeat (40) @(posedge clk);
         if (gpio_out !== 32'd1)
             $fatal(1, "FAIL: button press did not light LED 1");
 
-        $display("PASS: CPU GPIO_IN button polling and GPIO_OUT write");
+        $display("PASS: synchronized GPIO_IN button polling and GPIO_OUT write");
         $finish;
     end
 endmodule

@@ -8,6 +8,7 @@ module rv32i_pipelined_soc #(
     input  logic        clk,
     input  logic        reset,
     input  logic        btn,
+    input  logic        uart_rx,
 
     output logic [31:0] debug_a0,
     output logic [31:0] gpio_out,
@@ -15,12 +16,15 @@ module rv32i_pipelined_soc #(
 );
 
     // MMIO address map
-    localparam logic [31:0] GPIO_OUT_ADDR     = 32'h1000_0000;
-    localparam logic [31:0] GPIO_IN_ADDR      = 32'h1000_0004;
-    localparam logic [31:0] UART_TX_ADDR      = 32'h2000_0000;
-    localparam logic [31:0] UART_STATUS_ADDR  = 32'h2000_0004;
-    localparam logic [31:0] TIMER_LOAD_ADDR   = 32'h3000_0000;
-    localparam logic [31:0] TIMER_STATUS_ADDR = 32'h3000_0004;
+    localparam logic [31:0] GPIO_OUT_ADDR       = 32'h1000_0000;
+    localparam logic [31:0] GPIO_IN_ADDR        = 32'h1000_0004;
+    localparam logic [31:0] UART_TX_ADDR        = 32'h2000_0000;
+    localparam logic [31:0] UART_STATUS_ADDR    = 32'h2000_0004;
+    localparam logic [31:0] UART_RX_DATA_ADDR   = 32'h2000_0008;
+    localparam logic [31:0] UART_RX_STATUS_ADDR = 32'h2000_000C;
+    localparam logic [31:0] UART_RX_CLEAR_ADDR  = 32'h2000_0010;
+    localparam logic [31:0] TIMER_LOAD_ADDR     = 32'h3000_0000;
+    localparam logic [31:0] TIMER_STATUS_ADDR   = 32'h3000_0004;
 
     // Instruction bus
     logic [31:0] instruction_address;
@@ -38,6 +42,9 @@ module rv32i_pipelined_soc #(
     logic [31:0] gpio_read_data;
     logic [31:0] uart_read_data;
     logic [31:0] timer_read_data;
+    logic [7:0]  uart_rx_data;
+    logic        uart_rx_data_valid;
+    logic        uart_rx_framing_error;
 
     // Address decoder
     logic ram_selected;
@@ -51,6 +58,10 @@ module rv32i_pipelined_soc #(
     logic timer_busy;
     logic timer_done;
 
+    logic uart_rx_data_selected;
+    logic uart_rx_status_selected;
+    logic uart_rx_clear_selected;
+
     // RAM: 0x0000_0000 - 0x0000_00FF
     assign ram_selected         = (data_address[31:8] == 24'b0);
     assign gpio_out_selected    = (data_address == GPIO_OUT_ADDR);
@@ -59,6 +70,9 @@ module rv32i_pipelined_soc #(
     assign uart_status_selected = (data_address == UART_STATUS_ADDR);
     assign timer_load_selected  = (data_address == TIMER_LOAD_ADDR);
     assign timer_status_selected = (data_address == TIMER_STATUS_ADDR);
+    assign uart_rx_data_selected   = (data_address == UART_RX_DATA_ADDR);
+    assign uart_rx_status_selected = (data_address == UART_RX_STATUS_ADDR);
+    assign uart_rx_clear_selected  = (data_address == UART_RX_CLEAR_ADDR);
 
     // Instruction memory
     instruction_memory #(
@@ -113,6 +127,11 @@ module rv32i_pipelined_soc #(
         .write_enable (data_mem_write && uart_tx_selected),
         .write_data   (data_write_data),
         .read_data    (uart_read_data),
+        .rx            (uart_rx),
+        .rx_clear      (data_mem_write && uart_rx_clear_selected),
+        .rx_data       (uart_rx_data),
+        .rx_data_valid (uart_rx_data_valid),
+        .rx_framing_error(uart_rx_framing_error),
         .tx           (uart_tx)
     );
 
@@ -136,6 +155,10 @@ module rv32i_pipelined_soc #(
             data_read_data = ram_read_data;
         else if (uart_status_selected)
             data_read_data = uart_read_data;
+        else if (uart_rx_data_selected)
+            data_read_data = {24'b0, uart_rx_data};
+        else if (uart_rx_status_selected)
+            data_read_data = {30'b0, uart_rx_framing_error, uart_rx_data_valid};
         else if (timer_status_selected)
             data_read_data = timer_read_data;
         else

@@ -29,7 +29,7 @@ after a 16-bit multicycle CPU and a single-cycle RV32I core.
 | Data hazards | EX-stage forwarding, WB-to-ID bypass, one-cycle load-use stall |
 | Control hazards | EX-stage branch / JAL / JALR redirect and flush |
 | FPGA demo | Tang Nano 9K: NOP-free hazard demo verified on hardware |
-| SoC | RAM, GPIO, timer, and UART TX verified on Tang Nano 9K |
+| SoC | RAM, GPIO, timer, and UART TX/RX verified on Tang Nano 9K |
 
 ---
 
@@ -120,7 +120,7 @@ The processor is verified using self-checking SystemVerilog testbenches.
 | Pipeline | Stage flow and EX→WB execution |
 | Hazards | RAW forwarding, WB-to-ID bypass, load-use stall, and control-flow flush |
 | Control flow | Taken branches, JAL, JALR, and not-taken branch sequencing |
-| Regression | 34 directed testbenches; latest result 34/34 PASS |
+| Regression | 37 directed testbenches; latest result 37/37 PASS |
 
 Pipeline timing and stage alignment were also inspected using GTKWave.
 
@@ -158,6 +158,9 @@ selected value to the core.
 | `0x1000_0004` | GPIO input | Bit 0 is the active-high user-button state |
 | `0x2000_0000` | UART TX data | Store sends the low byte |
 | `0x2000_0004` | UART status | `1` while a transmission is in progress |
+| `0x2000_0008` | UART RX data | Read returns the last valid byte |
+| `0x2000_000C` | UART RX status | Bit 0: data valid, bit 1: framing error |
+| `0x2000_0010` | UART RX clear | Store clears RX status flags |
 | `0x3000_0000` | Timer load | Store starts the down-counter |
 | `0x3000_0004` | Timer status | `1` while the timer is busy |
 
@@ -236,10 +239,12 @@ Run from the repository root on native Linux:
 make help
 make test
 make flash-integration
+make flash PROGRAM=programs/uart_echo_demo.S
 make uart-monitor
 ```
 
 After opening the monitor, press the design reset button for `SOC READY`.
+For an interactive RX/TX check, run `/usr/bin/python3 -m serial.tools.miniterm /dev/ttyUSB1 115200` after loading `uart_echo_demo.S`.
 The user button reverses the LED chaser and emits `L` or `R`.
 `make flash` alone selects the GPIO demo.
 
@@ -256,10 +261,10 @@ Not yet implemented:
 * Exceptions and traps
 * Interrupts
 * Cache hierarchy
-* UART RX
 
-The GPIO user-button input still needs synchronization/debounce. Directed
-tests do not establish exhaustive ISA coverage or metastability safety.
+The GPIO user button is synchronized but not debounced. UART RX has one
+stored byte and no overrun handling yet. Directed tests do not establish
+exhaustive ISA coverage or metastability safety.
 
 ---
 
@@ -279,6 +284,7 @@ tests do not establish exhaustive ISA coverage or metastability safety.
 * [x] NOP-free program execution in simulation and on Tang Nano 9K
 * [x] Hazard-handled FPGA synthesis, place-and-route, and timing check
 * [x] GPIO, UART TX and timer SoC integration
+* [x] UART RX MMIO, echo simulation, and Tang Nano 9K loopback
 * [x] Native Linux build, regression and integrated FPGA demo
 
 ---

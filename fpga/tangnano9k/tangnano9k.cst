@@ -17,3 +17,7 @@ IO_PORT "reset_btn" PULL_MODE=UP;
 // FPGA_TX is wired to the onboard BL702 USB-UART bridge.
 IO_LOC "uart_tx" 17;
 IO_PORT "uart_tx" IO_TYPE = LVCMOS33;
+
+// BL702 USB-UART bridge to FPGA receiver.
+IO_LOC "uart_rx" 18;
+IO_PORT "uart_rx" IO_TYPE = LVCMOS33;
