@@ -6,11 +6,20 @@ _start:
 
 wait_rx:
     lw   t0, 12(s0)         # UART_RX_STATUS
-    andi t0, t0, 1          # Keep data_valid only.
-    beq  t0, x0, wait_rx
+
+    andi t1, t0, 2          # Check framing_error.
+    bne  t1, x0, rx_error
+
+    andi t1, t0, 1          # Check data_valid.
+    beq  t1, x0, wait_rx
 
     lw   a0, 8(s0)          # UART_RX_DATA
     sw   x0, 16(s0)         # UART_RX_CLEAR
+    jal  x0, wait_tx
+
+rx_error:
+    sw   x0, 16(s0)         # Discard the bad frame.
+    jal  x0, wait_rx
 
 wait_tx:
     lw   t0, 4(s0)          # UART_TX_STATUS: busy = 1

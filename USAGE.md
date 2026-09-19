@@ -15,7 +15,15 @@ GTKWave is used for waveform inspection. The Makefile adds
 if needed. Helpers use `/usr/bin/python3` (`PYTHON` can override it); UART
 monitoring requires the system `python3-serial` package.
 
-**Run the existing board demo:**
+**Run the timer-interrupt board demo:**
+
+```bash
+make flash-interrupt
+```
+
+The LEDs advance about every half-second from a timer interrupt. The user
+button reverses direction, and the design reset button restarts the program.
+This demo does not print UART text. The earlier polling/UART demo remains:
 
 ```bash
 make flash-integration
@@ -53,7 +61,8 @@ and board constraints are also unchanged. Oversized programs are rejected.
 make test-load_use_stall # Example: choose the test relevant to your change
 make lint
 make test
-make flash-integration  # When validating the change on the board
+make flash-interrupt    # Timer-interrupt LED demo
+make flash-integration  # Polling LED/UART demo
 ```
 
 Close the UART monitor before flashing. On native Linux the normal flow does
@@ -139,10 +148,10 @@ $dumpvars(0, example_tb);
 
 ## Verification record and limits
 
-The current design passed 34/34 directed tests and a 27 MHz FPGA timing target
-(42.02 MHz final post-route estimate). UART boot output was captured; LED motion,
-direction change and design reset were confirmed on hardware. Six unused-field
-or signal lint warnings remain visible.
+The current design passed 40/40 directed tests. The timer-interrupt FPGA image
+passed the 27 MHz timing target with a 46.71 MHz post-route estimate. LED motion,
+button-controlled direction reversal and reset were confirmed on the Tang Nano
+9K. The earlier polling demo was also confirmed with UART boot output.
 
 Tests cover ISA examples, forwarding priority/WB-to-ID bypass, load-use hazards,
 branch conditions, timer boundaries and wrong-path MMIO stores. They are not an

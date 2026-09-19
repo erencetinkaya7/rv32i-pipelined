@@ -1,81 +1,89 @@
 <div align="center">
 
-# RV32I Pipelined Core
+# RV32I Pipelined SoC
 
-### 5-Stage RISC-V RV32I Processor in SystemVerilog
+A synthesizable five-stage RISC-V processor and minimal SoC written in SystemVerilog.
 
-A synthesizable 32-bit RISC-V processor implementing a classic  
-**IF → ID → EX → MEM → WB** pipeline.
-
-![SystemVerilog](https://img.shields.io/badge/SystemVerilog-RTL-blue)
-![RISC-V](https://img.shields.io/badge/RISC--V-RV32I-darkgreen)
-![Pipeline](https://img.shields.io/badge/Pipeline-5--Stage-orange)
-![FPGA](https://img.shields.io/badge/FPGA-Tang%20Nano%209K-purple)
+![SystemVerilog](https://img.shields.io/badge/SystemVerilog-RTL-2C4F7C)
+![RISC-V](https://img.shields.io/badge/RISC--V-RV32I-283272)
+![Pipeline](https://img.shields.io/badge/Pipeline-5%20stage-CB4B16)
+![FPGA](https://img.shields.io/badge/FPGA-Tang%20Nano%209K-6F42C1)
+![Tests](https://img.shields.io/badge/regression-40%2F40%20pass-22863A)
 
 </div>
 
----
-
 ## Overview
 
-An educational 5-stage **RV32I processor core**, written from scratch in
-SystemVerilog. It is the third project in a processor-design learning path,
-after a 16-bit multicycle CPU and a single-cycle RV32I core.
+This project implements a 32-bit RISC-V processor with a classic
+**IF -> ID -> EX -> MEM -> WB** pipeline. It started as a core-only design and
+now runs as a small SoC with RAM, GPIO, UART TX/RX, a timer, machine-mode traps,
+and precise timer interrupts.
 
-| Area | Current state |
+The project is built as a learning platform: each architectural feature is
+connected from assembly and ISA behavior through the datapath, RTL, simulation,
+waveforms, synthesis, and physical FPGA behavior.
+
+| Area | Current implementation |
 | --- | --- |
-| ISA | 37 supported RV32I instructions |
-| Datapath | IF → ID → EX → MEM → WB |
-| Data hazards | EX-stage forwarding, WB-to-ID bypass, one-cycle load-use stall |
-| Control hazards | EX-stage branch / JAL / JALR redirect and flush |
-| FPGA demo | Tang Nano 9K: NOP-free hazard demo verified on hardware |
-| SoC | RAM, GPIO, timer, and UART TX/RX verified on Tang Nano 9K |
-
----
+| Base ISA | 37 RV32I instructions |
+| Pipeline | Five stages with four pipeline registers |
+| Data hazards | EX/MEM and MEM/WB forwarding, WB-to-ID bypass, load-use stall |
+| Control hazards | EX-stage redirect and flush for branches, JAL, JALR, traps, and MRET |
+| Machine system subset | ECALL, MRET, CSRRW, CSRRS |
+| Interrupts | Precise machine timer interrupt with pending and enable state |
+| SoC | 256-byte data RAM, GPIO, timer, UART TX/RX |
+| FPGA | Tang Nano 9K, 27 MHz board clock |
+| Verification | 40/40 directed self-checking tests |
 
 ## Architecture
 
 ```text
-          IF           ID           EX           MEM          WB
-          │            │            │             │            │
-     ┌────▼────┐  ┌────▼────┐  ┌────▼────┐  ┌────▼────┐  ┌────▼────┐
-     │   PC    │  │ Decode  │  │   ALU   │  │ Memory  │  │Writeback│
-     │ Fetch   │  │Reg File │  │ Branch  │  │ Access  │  │  MUX    │
-     └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘
-          │            │            │             │            │
-        IF/ID        ID/EX        EX/MEM         MEM/WB        │
-          │            │            │             │            │
-          └────────────┴────────────┴─────────────┴────────────┘
+                         +------------------------------+
+                         |        Machine CSRs          |
+                         | mstatus mie mip mtvec         |
+                         | mepc mcause                   |
+                         +---------------+--------------+
+                                         |
+                                         v
++---------+    +---------+    +---------+    +---------+    +---------+
+|   IF    | -> |   ID    | -> |   EX    | -> |   MEM   | -> |   WB    |
+| PC/IMEM |    | Decode  |    | ALU     |    | RAM/MMIO|    | Regfile |
++----+----+    +----+----+    +----+----+    +----+----+    +----+----+
+     |              |              |              |              |
+     +---- IF/ID ---+--- ID/EX ----+--- EX/MEM ---+--- MEM/WB ---+
+                                   |
+                      branch / jump / trap redirect
 ```
 
-Pipeline registers carry both datapath values and the control signals
-belonging to each instruction.
+The processor exposes separate instruction and data interfaces. The SoC owns
+instruction memory, data RAM, address decoding, and peripherals.
 
-Instruction and data memories are kept outside the processor core,
-allowing a cleaner interface for future SoC and memory-system integration.
+### Pipeline control
 
----
+- ALU operands can be forwarded from EX/MEM or MEM/WB.
+- A load-use dependency freezes PC and IF/ID for one cycle and inserts a bubble
+  into ID/EX.
+- Taken branches and jumps are resolved in EX and flush younger instructions.
+- Redirects have priority over a simultaneous load-use stall.
+- IF/ID carries a valid bit so an interrupt never saves the PC of a reset or
+  flush bubble.
 
-## Pipeline Stages
+### Precise interrupt boundary
 
-| Stage | Main Operations                                             |
-| ----- | ----------------------------------------------------------- |
-| IF    | PC update, instruction fetch, PC + 4                        |
-| ID    | Instruction decode, register read, immediate generation     |
-| EX    | ALU operation, operand selection, branch/jump decision      |
-| MEM   | Load/store memory access                                    |
-| WB    | ALU / memory / PC+4 result selection and register writeback |
+A timer interrupt is accepted between the EX and ID instructions:
 
-Pipeline registers:
+```text
+Older MEM/WB work     -> completes
+Current EX instruction -> completes
+Current ID instruction -> saved in mepc and flushed
+Younger IF instruction -> flushed
+```
 
-* `IF/ID`
-* `ID/EX`
-* `EX/MEM`
-* `MEM/WB`
+After the handler executes `MRET`, execution resumes from the saved ID
+instruction. This prevents an interrupted instruction from being skipped or
+executed twice.
 
----
-
-## Supported RV32I Instructions
+## Supported instructions
 
 | Group | Instructions |
 | --- | --- |
@@ -84,223 +92,191 @@ Pipeline registers:
 | Loads | `LB LBU LH LHU LW` |
 | Stores | `SB SH SW` |
 | Branches | `BEQ BNE BLT BGE BLTU BGEU` |
-| Control / upper immediate | `LUI AUIPC JAL JALR` |
+| Control and upper immediate | `LUI AUIPC JAL JALR` |
+| Machine system subset | `ECALL MRET CSRRW CSRRS` |
 
----
+`CSRRW` and `CSRRS` are the implemented part of the Zicsr extension.
+Assembler aliases such as `csrw`, `csrr`, and `csrs` are therefore usable.
+The full Zicsr extension is not yet implemented.
 
-## Repository Structure
+## Machine-mode traps and interrupts
+
+| CSR | Address | Implemented role |
+| --- | ---: | --- |
+| `mstatus` | `0x300` | Global interrupt enable and previous enable state |
+| `mie` | `0x304` | Machine timer interrupt enable |
+| `mtvec` | `0x305` | Direct-mode trap handler base |
+| `mepc` | `0x341` | Resume PC |
+| `mcause` | `0x342` | ECALL or machine timer interrupt cause |
+| `mip` | `0x344` | Latched machine timer pending bit |
+
+The timer produces a one-cycle completion pulse. `mip.MTIP` latches that pulse
+until the CPU accepts it, so an interrupt is not lost while interrupts are
+temporarily disabled.
+
+A timer interrupt is accepted when:
 
 ```text
-rtl/                 CPU, pipeline registers, memories and SoC peripherals
-programs/            RISC-V assembly sources (all demos)
-tb/                  Small self-checking SystemVerilog tests
-fpga/tangnano9k/      Board top and pin constraints only
-scripts/             Binary-to-HEX converter and UART monitor
-build/               Generated files only; ignored by Git
-  programs/          ELF, BIN and the selected program.hex image
-  sim/               Compiled simulations
-  waves/             VCD waveforms
-  logs/              Test output and errors
-  fpga/              Synthesis/P&R JSON and the .fs bitstream
-Makefile             All build, test and programming commands
-README.md            Architecture and usage
+mstatus.MIE && mie.MTIE && mip.MTIP
 ```
 
+Trap entry saves `mepc` and `mcause`, moves `MIE` into `MPIE`, disables
+new interrupts, and redirects to `mtvec`. `MRET` restores the previous
+interrupt-enable state and resumes at `mepc`.
 
----
+## SoC memory map
 
-## Verification
+| Address | Device | Access |
+| --- | --- | --- |
+| `0x0000_0000-0x0000_00FF` | Data RAM | Byte, halfword, and word loads/stores |
+| `0x1000_0000` | GPIO output | Store updates `gpio_out` |
+| `0x1000_0004` | GPIO input | Bit 0 reports the synchronized user button |
+| `0x2000_0000` | UART TX data | Store transmits the low byte |
+| `0x2000_0004` | UART TX status | Bit 0 is high while TX is busy |
+| `0x2000_0008` | UART RX data | Read returns the received byte |
+| `0x2000_000C` | UART RX status | Bit 0 valid, bit 1 framing error |
+| `0x2000_0010` | UART RX clear | Store clears RX status |
+| `0x3000_0000` | Timer load | Store starts the countdown |
+| `0x3000_0004` | Timer status | Bit 0 is high while the timer is busy |
 
-The processor is verified using self-checking SystemVerilog testbenches.
+## FPGA demonstrations
 
-| Scope | Coverage |
-| --- | --- |
-| ISA behavior | Arithmetic, logic, loads/stores, branches, JAL/JALR, LUI/AUIPC |
-| Memory | Byte, halfword, and word accesses |
-| Pipeline | Stage flow and EX→WB execution |
-| Hazards | RAW forwarding, WB-to-ID bypass, load-use stall, and control-flow flush |
-| Control flow | Taken branches, JAL, JALR, and not-taken branch sequencing |
-| Regression | 37 directed testbenches; latest result 37/37 PASS |
-
-Pipeline timing and stage alignment were also inspected using GTKWave.
-
-The repository is used from **native Linux**. From the repository root:
+### Timer-interrupt demo
 
 ```bash
+make flash-interrupt
+```
+
+The foreground program polls the user button while timer interrupts move one
+active LED about every half-second. Pressing the user button reverses direction.
+The design reset button restarts the CPU and peripherals.
+
+The interrupt handler:
+
+1. Saves temporary registers on the data-RAM stack.
+2. Advances or wraps the LED pattern.
+3. Writes the new pattern to GPIO.
+4. Reloads the one-shot timer.
+5. Restores the saved registers.
+6. Returns with `MRET`.
+
+This demo passed simulation, synthesis, timing, and physical Tang Nano 9K
+validation.
+
+### Other demos
+
+```bash
+make flash-integration   # Polling LED chaser, button and UART messages
+make flash-uart          # UART transmit demo
+make flash-gpio          # Static GPIO pattern
+```
+
+For UART monitoring:
+
+```bash
+make uart-ports
+make uart-monitor UART_PORT=/dev/ttyUSB1
+```
+
+## Build and verification
+
+Run commands from the repository root:
+
+```bash
+make help
 make lint
 make test
 ```
 
-`make test` runs the self-checking regression and writes concise results to
-the terminal. Detailed simulator output is kept in `build/logs/`; generated
-waveforms go in `build/waves/`. Linting uses **Verilator** and simulation uses
-**Icarus Verilog**.
-
----
-
-## FPGA Implementation
-
-Target board:
-
-**Sipeed Tang Nano 9K — Gowin GW1NR-9**
-
-### Current SoC checkpoint
-
-The FPGA top instantiates `rv32i_pipelined_soc`, keeping the CPU core
-separate from its memory map. RAM and peripherals share one data port; the
-address decoder selects the target and a read-data multiplexer returns the
-selected value to the core.
-
-| Address | Device | Current behavior |
-| --- | --- | --- |
-| `0x0000_0000`–`0x0000_00FF` | Data RAM | Load and store |
-| `0x1000_0000` | GPIO output | Store updates `gpio_out[31:0]` |
-| `0x1000_0004` | GPIO input | Bit 0 is the active-high user-button state |
-| `0x2000_0000` | UART TX data | Store sends the low byte |
-| `0x2000_0004` | UART status | `1` while a transmission is in progress |
-| `0x2000_0008` | UART RX data | Read returns the last valid byte |
-| `0x2000_000C` | UART RX status | Bit 0: data valid, bit 1: framing error |
-| `0x2000_0010` | UART RX clear | Store clears RX status flags |
-| `0x3000_0000` | Timer load | Store starts the down-counter |
-| `0x3000_0004` | Timer status | `1` while the timer is busy |
-
-On Tang Nano 9K, `gpio_out[5:0]` drives the active-low onboard LEDs. The
-`gpio_demo.S` demonstration writes `21` (`0b010101`). `soc_integration_demo.S`
-adds a timer-driven LED chaser, user-button direction changes, and UART
-messages (`SOC READY`, then `L`/`R` on direction changes).
-
-FPGA flow:
-
-```text
-RISC-V Assembly
-      ↓
-GNU RISC-V Toolchain
-      ↓
-ELF → BIN → HEX
-      ↓
-Yosys Synthesis
-      ↓
-nextpnr Place & Route
-      ↓
-Gowin Bitstream
-```
-
-Current integrated SoC (native Linux, 13 September 2026):
-
-| Metric | Result |
-| --- | ---: |
-| Target clock | 27 MHz |
-| Post-route maximum frequency | 42.02 MHz — PASS |
-| LUT4 / DFF / BSRAM | 3351 / 802 / 2 |
-| Board validation | UART, LEDs, direction change and reset confirmed |
-
-Historical baseline `v0.1` result:
-
-| Metric            |             Result |
-| ----------------- | -----------------: |
-| Maximum Frequency |      **65.71 MHz** |
-| LUT4              | 2097 / 8640 (~24%) |
-| DFF               |  739 / 6480 (~11%) |
-| BSRAM             |       2 / 26 (~7%) |
-
-Hazard-handled checkpoint result:
-
-| Metric | Result |
-| --- | ---: |
-| Target clock | 27 MHz |
-| Post-route maximum frequency | **50.14 MHz** |
-| Hardware demonstration | PASS |
-
-### NOP-free hazard demo
-
-[`hazard_demo.S`](programs/hazard_demo.S) is a compact end-to-end program
-used for both simulation and FPGA validation. It exercises a store/load pair,
-load-use dependency, forwarding through a loop, a taken branch, `JAL`, and
-`JALR` return, without inserting software NOPs.
-
-Expected final state:
-
-| Signal / state | Expected value |
-| --- | ---: |
-| `RAM[0]` | 5 |
-| `t2` | 6 |
-| `t3` | 0 |
-| `a0` | 19 |
-
-The earlier core-only board top displayed `a0 = 19` on the LEDs. The current
-SoC top displays GPIO instead; `make test-hazard_demo` checks this program
-in simulation.
-
-## Quick Start
-
-Run from the repository root on native Linux:
+Useful focused commands:
 
 ```bash
-make help
-make test
-make flash-integration
-make flash PROGRAM=programs/uart_echo_demo.S
-make uart-monitor
+make test-ecall_trap
+make test-timer_interrupt
+make test-soc_timer_interrupt
+make wave TEST=timer_interrupt
+make wave TEST=soc_timer_interrupt
 ```
 
-After opening the monitor, press the design reset button for `SOC READY`.
-For an interactive RX/TX check, run `/usr/bin/python3 -m serial.tools.miniterm /dev/ttyUSB1 115200` after loading `uart_echo_demo.S`.
-The user button reverses the LED chaser and emits `L` or `R`.
-`make flash` alone selects the GPIO demo.
+Generated files are kept under `build/`:
 
-See [USAGE.md](USAGE.md) for software builds, focused tests, waveforms,
-adding testbenches, tool configuration and cleanup.
+| Directory | Contents |
+| --- | --- |
+| `build/programs/` | ELF, BIN, and selected `program.hex` |
+| `build/sim/` | Compiled simulations |
+| `build/waves/` | VCD waveforms |
+| `build/logs/` | Detailed test output |
+| `build/fpga/` | Synthesis, place-and-route, and bitstream files |
 
----
+### Current results
 
-## Current Limitations
+| Check | Result |
+| --- | ---: |
+| Directed regression | **40/40 PASS** |
+| Verilator lint | PASS with visible unused-field warnings |
+| FPGA target clock | **27.00 MHz** |
+| Post-route estimate | **46.71 MHz** |
+| Timer-interrupt board demo | **PASS** |
+| Generated bitstream | `build/fpga/rv32i.fs` |
 
-Not yet implemented:
+The directed tests cover ISA behavior, forwarding, load-use hazards, control
+flushes, subword memory access, UART RX/TX, timer boundaries, ECALL/MRET, CSR
+access, precise interrupt return, MMIO integration, and physical-demo behavior.
+They are not a formal proof or a complete RISC-V compliance suite.
 
-* CSR instructions
-* Exceptions and traps
-* Interrupts
-* Cache hierarchy
+## Repository layout
 
-The GPIO user button is synchronized but not debounced. UART RX has one
-stored byte and no overrun handling yet. Directed tests do not establish
-exhaustive ISA coverage or metastability safety.
+```text
+rtl/
+  core/               Datapath, control, register file, CSR file
+  pipeline/           IF/ID, ID/EX, EX/MEM, MEM/WB registers
+  memory/             Instruction and data memories
+  peripherals/        Timer and UART blocks
+  soc/                GPIO and SoC integration
+programs/              Bare-metal RISC-V assembly demos
+tb/                    Self-checking SystemVerilog testbenches
+fpga/tangnano9k/       Board top and pin constraints
+scripts/               Binary conversion and UART monitor helpers
+Makefile               Build, test, waveform, FPGA, and flash commands
+USAGE.md               Detailed local workflow
+```
 
----
+## Toolchain
 
-## Roadmap
+- GNU RISC-V bare-metal toolchain
+- Icarus Verilog
+- Verilator
+- GTKWave
+- Yosys
+- nextpnr-himbaechel
+- gowin_pack
+- openFPGALoader
 
-* [x] IF stage
-* [x] ID stage
-* [x] EX stage
-* [x] MEM stage
-* [x] WB stage
-* [x] 37-instruction RV32I baseline
-* [x] FPGA synthesis and timing
-* [x] Pipeline flow verification
-* [x] EX-stage RAW forwarding, including EX/MEM and MEM/WB priority
-* [x] Load-use stall and bubble insertion
-* [x] Branch / jump pipeline flush
-* [x] NOP-free program execution in simulation and on Tang Nano 9K
-* [x] Hazard-handled FPGA synthesis, place-and-route, and timing check
-* [x] GPIO, UART TX and timer SoC integration
-* [x] UART RX MMIO, echo simulation, and Tang Nano 9K loopback
-* [x] Native Linux build, regression and integrated FPGA demo
+The default Makefile setup expects OSS CAD Suite at `~/oss-cad-suite`. Override
+`OSS_CAD_DIR` if it is installed elsewhere.
 
----
+## Current limits
 
-## Tools
+- Only machine mode is implemented.
+- CSR instructions are limited to `CSRRW` and `CSRRS`.
+- `mtvec` supports direct mode only.
+- Nested, external, illegal-instruction, and misalignment traps are not
+  implemented.
+- UART RX stores one byte and has no overrun handling.
+- The user button is synchronized but not debounced.
+- There are no caches or memory protection mechanisms.
 
-* SystemVerilog
-* Icarus Verilog
-* Verilator
-* GTKWave
-* Yosys
-* nextpnr
-* Gowin toolchain
-* GNU RISC-V toolchain
+## Next checkpoints
 
----
+1. Review interrupt waveforms and consolidate the trap/CSR architecture.
+2. Add selected exception behavior only where it improves architectural
+   understanding.
+3. Introduce startup code, a linker layout, stack conventions, and small C
+   programs.
+4. Measure critical paths and work toward higher clock targets.
+5. Build a larger interrupt-driven SoC application.
+
+See [USAGE.md](USAGE.md) for the complete command reference and daily workflow.
 
 ## License
 

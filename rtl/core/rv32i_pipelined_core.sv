@@ -5,6 +5,7 @@ module rv32i_pipelined_core (
 
     input  logic        clk,
     input  logic        reset,
+    input  logic        timer_irq,
 
     // Instruction interface
     input  logic [31:0] instruction_data,
@@ -30,6 +31,31 @@ module rv32i_pipelined_core (
     logic [31:0] pc_plus4;
     logic load_use_hazard;
     logic ex_pc_redirect;
+    logic ex_sync_redirect;
+    logic interrupt_request;
+    logic interrupt_take;
+    logic trap_enter;
+    logic [31:0] trap_pc;
+    logic [31:0] trap_cause;
+
+// CSR signals
+    logic        ex_ecall;
+    logic        ex_mret;
+    logic        ex_csrrw;
+    logic        ex_csrrs;
+    logic        ex_csr_access;
+
+    logic [31:0] csr_mstatus;
+    logic [31:0] csr_mie;
+    logic [31:0] csr_mtvec;
+    logic [31:0] csr_mepc;
+    logic [31:0] csr_mcause;
+    logic [31:0] csr_mip;
+    logic [31:0] csr_read_data;
+    logic        csr_write_enable;
+    logic [31:0] csr_write_data;
+
+    logic [31:0] ex_execution_result;
 
     assign instruction_address = pc;
     assign pc_plus4 = pc + 32'd4;
@@ -37,7 +63,9 @@ module rv32i_pipelined_core (
     always_ff @(posedge clk) begin
         if (reset)
             pc <= 32'b0;
-        // Freeze fetch while the dependent instruction waits in ID.
+        // Redirects must win over a simultaneous load-use stall.
+        else if (ex_pc_redirect)
+            pc <= pc_next;
         else if (!load_use_hazard)
             pc <= pc_next;
     end
@@ -48,6 +76,7 @@ module rv32i_pipelined_core (
     logic [31:0] if_id_pc;
     logic [31:0] if_id_pc_plus4;
     logic [31:0] if_id_instruction;
+    logic        if_id_valid;
 
     if_id_reg if_id (
         .clk(clk),
@@ -61,7 +90,8 @@ module rv32i_pipelined_core (
         // Outputs
         .pc_out(if_id_pc),
         .pc_plus4_out(if_id_pc_plus4),
-        .instruction_out(if_id_instruction)
+        .instruction_out(if_id_instruction),
+        .valid_out(if_id_valid)
     );    
 
 
@@ -107,6 +137,7 @@ module rv32i_pipelined_core (
 // Main instruction control
     control_unit control (
         .opcode(id_opcode),
+        .funct3(id_funct3),
 
         .reg_write(id_reg_write),
         .alu_src(id_alu_src),
@@ -294,6 +325,87 @@ module rv32i_pipelined_core (
         .jalr_out(ex_jalr)
 );
 
+// ECALL detection
+
+    assign ex_ecall =
+        (ex_opcode == 7'b1110011) &&
+        (ex_funct3 == 3'b000) &&
+        (ex_rd     == 5'd0) &&
+        (ex_rs1    == 5'd0) &&
+        (ex_rs2    == 5'd0) &&
+        (ex_funct7 == 7'd0);
+
+// MRET detection
+
+    assign ex_mret =
+        (ex_opcode == 7'b1110011) &&
+        (ex_funct3 == 3'b000) &&
+        (ex_rd == 5'd0) &&
+        (ex_rs1 == 5'd0) &&
+        (ex_immediate[11:0] == 12'h302);
+
+    // CSR instruction detection
+
+    assign ex_csrrw =
+        (ex_opcode == 7'b1110011) &&
+        (ex_funct3 == 3'b001);
+
+    assign ex_csrrs =
+        (ex_opcode == 7'b1110011) &&
+        (ex_funct3 == 3'b010);
+
+    assign ex_csr_access = ex_csrrw | ex_csrrs;
+
+    // CSR write behavior
+
+    assign csr_write_enable =
+        ex_csrrw | (ex_csrrs && (ex_rs1 != 5'd0));
+
+    assign csr_write_data =
+        ex_csrrw
+            ? ex_forwarded_rs1
+            : csr_read_data | ex_forwarded_rs1;
+
+
+// Machine-mode trap CSRs
+
+    assign interrupt_request =
+        csr_mstatus[3] & csr_mie[7] & csr_mip[7];
+
+    // The EX instruction completes; the valid ID instruction is retried after MRET.
+    assign interrupt_take =
+        interrupt_request & if_id_valid &
+        !ex_sync_redirect & !ex_csr_access;
+
+    assign trap_enter = ex_ecall | interrupt_take;
+    assign trap_pc = ex_ecall ? ex_pc : if_id_pc;
+    assign trap_cause =
+        ex_ecall ? 32'd11 : 32'h8000_0007;
+
+    csr_file trap_csrs (
+        .clk              (clk),
+        .reset            (reset),
+
+        .trap_enter       (trap_enter),
+        .trap_return      (ex_mret),
+        .trap_pc          (trap_pc),
+        .trap_cause       (trap_cause),
+        .timer_irq        (timer_irq),
+
+        .csr_read_addr    (ex_immediate[11:0]),
+        .csr_read_data    (csr_read_data),
+        .csr_write_enable (csr_write_enable),
+        .csr_write_addr   (ex_immediate[11:0]),
+        .csr_write_data   (csr_write_data),
+
+        .mstatus          (csr_mstatus),
+        .mie              (csr_mie),
+        .mtvec            (csr_mtvec),
+        .mepc             (csr_mepc),
+        .mcause           (csr_mcause),
+        .mip              (csr_mip)
+    );
+
 // Hazard Unit
 
     hazard_unit hazard (
@@ -349,6 +461,10 @@ module rv32i_pipelined_core (
         .result      (ex_alu_result)
     );
 
+// Execution result selection
+
+    assign ex_execution_result =
+        ex_csr_access ? csr_read_data : ex_alu_result;
 
 // Branch decision
     branch_unit branch_unit_inst (
@@ -364,13 +480,23 @@ module rv32i_pipelined_core (
     assign ex_branch_target = ex_pc + ex_immediate;
     assign ex_jalr_target   = (ex_forwarded_rs1 + ex_immediate) & 32'hFFFF_FFFE;
 
-    assign ex_pc_redirect = ex_branch_taken | ex_jump | ex_jalr;
+    assign ex_sync_redirect =
+        ex_ecall | ex_mret | ex_branch_taken | ex_jump | ex_jalr;
 
-    assign pc_next = ex_jalr
-                ? ex_jalr_target
-                : ex_pc_redirect
-                ? ex_branch_target
-                : pc_plus4;
+    assign ex_pc_redirect = ex_sync_redirect | interrupt_take;
+
+    assign pc_next =
+        ex_ecall
+            ? csr_mtvec
+            : ex_mret
+            ? csr_mepc
+            : interrupt_take
+            ? csr_mtvec
+            : ex_jalr
+            ? ex_jalr_target
+            : ex_sync_redirect
+            ? ex_branch_target
+            : pc_plus4;
 
     
 
@@ -379,7 +505,7 @@ module rv32i_pipelined_core (
         .clk            (clk),
         .reset          (reset),
 
-        .alu_result_in  (ex_alu_result),
+        .alu_result_in  (ex_execution_result),
         .rs2_data_in    (ex_forwarded_rs2),
         .pc_plus4_in    (ex_pc_plus4),
         .rd_in          (ex_rd),

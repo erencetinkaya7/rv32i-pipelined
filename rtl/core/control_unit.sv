@@ -1,5 +1,6 @@
 module control_unit (
 	input logic [6:0] opcode,
+	input logic [2:0] funct3,
 	
 	output logic reg_write,
 	output logic alu_src,
@@ -116,6 +117,18 @@ always_comb begin
 			result_src = 2'b10;
 			uses_rs1 = 1'b1;
 		end
+
+        7'b1110011: begin // SYSTEM
+            case (funct3)
+                3'b001,   // CSRRW
+                3'b010: begin // CSRRS
+                    reg_write = 1'b1;
+                    uses_rs1  = 1'b1;
+                end
+                default: ;
+            endcase
+        end
+
 		default: ;
 	endcase
 end

@@ -47,6 +47,18 @@ module soc_uart_echo_tb;
         end
     endtask
 
+    // Send a frame with an invalid low stop bit.
+    task automatic send_bad_stop_byte(input logic [7:0] value);
+        integer bit_number;
+        begin
+            send_bit(1'b0);
+            for (bit_number = 0; bit_number < 8; bit_number = bit_number + 1)
+                send_bit(value[bit_number]);
+            send_bit(1'b0);
+            uart_rx = 1'b1;
+        end
+    endtask
+
     task automatic check_bit(input logic expected);
         begin
             @(negedge clk);
@@ -81,6 +93,17 @@ module soc_uart_echo_tb;
         check_byte("K");
 
         repeat (10) @(posedge clk);
+        send_bad_stop_byte(8'hA5);
+        repeat (80) begin
+            @(posedge clk);
+            if (uart_tx !== 1'b1)
+                $fatal(1, "FAIL: framing-error byte was echoed");
+        end
+
+        if (dut.uart_rx_framing_error !== 1'b0)
+            $fatal(1, "FAIL: echo program did not clear framing_error");
+
+        // Reception must recover after the bad frame.
         send_byte(8'h3C);
         @(negedge uart_tx);
         check_byte(8'h3C);
@@ -88,7 +111,7 @@ module soc_uart_echo_tb;
         if (dut.uart_rx_data_valid !== 1'b0)
             $fatal(1, "FAIL: echo program did not clear data_valid");
 
-        $display("PASS: CPU echoed two UART RX bytes through UART TX");
+        $display("PASS: CPU discarded a bad frame and resumed UART echo");
         $finish;
     end
 

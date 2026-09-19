@@ -86,6 +86,19 @@ module id_ex_reg (
 
         // Insert a NOP into EX while the dependent instruction remains in ID.
         else if (bubble) begin
+            pc_out            <= 32'b0;
+            pc_plus4_out      <= 32'b0;
+            rs1_data_out      <= 32'b0;
+            rs2_data_out      <= 32'b0;
+            immediate_out     <= 32'b0;
+
+            rs1_out           <= 5'b0;
+            rs2_out           <= 5'b0;
+            rd_out            <= 5'b0;
+            funct3_out        <= 3'b0;
+            funct7_out        <= 7'b0;
+            opcode_out        <= 7'b0;
+
             reg_write_out     <= 1'b0;
             alu_src_out       <= 1'b0;
             alu_a_sel_out     <= 2'b0;

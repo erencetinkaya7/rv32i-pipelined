@@ -86,6 +86,7 @@ module rv32i_pipelined_soc #(
     rv32i_pipelined_core cpu (
         .clk                 (clk),
         .reset               (reset),
+        .timer_irq           (timer_done),
         .instruction_data    (instruction_data),
         .instruction_address (instruction_address),
         .data_read_data      (data_read_data),
